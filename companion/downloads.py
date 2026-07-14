@@ -10,6 +10,7 @@ from typing import Any
 
 from companion.core import (
     _active_path,
+    _exchange_dir,
     _read_json_object,
     _safe_name,
     _sha256,
@@ -166,6 +167,27 @@ def validate_response(exchange_dir: Path) -> dict[str, Any]:
             continue
         checked.append(name)
     return _validation_report(manifest, expected_main, missing, invalid, checked)
+
+
+def finalize_exchange(root: Path, exchange_id: str) -> dict[str, Any]:
+    root = Path(root).resolve()
+    active = load_active_call(root)
+    if active is not None:
+        raise RuntimeError("an active call must be finished with done or stop")
+    exchange = _exchange_dir(root, exchange_id)
+    manifest_path = exchange / "EXCHANGE_MANIFEST.json"
+    manifest = _read_json_object(manifest_path, "EXCHANGE_MANIFEST")
+    if manifest.get("state") not in {"PREPARED", "INCOMPLETE", "COMPLETE"}:
+        raise RuntimeError(f"exchange cannot be validated from state {manifest.get('state')}")
+    report = validate_response(exchange)
+    _write_json_atomic(exchange / "validation" / "VALIDATION_REPORT.json", report)
+    manifest["state"] = report["status"]
+    _write_json_atomic(manifest_path, manifest)
+    _write_json_atomic(
+        root / "state" / "LAST_RESULT.json",
+        {"exchange_id": exchange_id, "report": report},
+    )
+    return report
 
 
 def _validation_report(

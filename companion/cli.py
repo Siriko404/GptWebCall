@@ -11,8 +11,11 @@ from companion.core import (
     _exchange_dir,
     _read_json_object,
     list_ready_calls,
+    load_active_call,
     prepare_call,
+    stop_call,
 )
+from companion.downloads import finalize_exchange, finish_call
 
 
 def run(
@@ -39,6 +42,14 @@ def run(
             result = _read_json_object(
                 exchange / "EXCHANGE_MANIFEST.json", "EXCHANGE_MANIFEST"
             )
+        elif command == "active":
+            result = load_active_call(root)
+        elif command == "done":
+            result = finish_call(root)
+        elif command == "stop":
+            result = stop_call(root)
+        elif command == "validate":
+            result = finalize_exchange(root, options.exchange)
         else:
             raise ValueError(f"unsupported command: {command}")
     except (Exception, SystemExit) as error:
@@ -68,6 +79,11 @@ def _parser() -> argparse.ArgumentParser:
     subcommands.add_parser("list", exit_on_error=False)
     show = subcommands.add_parser("show", exit_on_error=False)
     show.add_argument("--exchange", required=True)
+    subcommands.add_parser("active", exit_on_error=False)
+    subcommands.add_parser("done", exit_on_error=False)
+    subcommands.add_parser("stop", exit_on_error=False)
+    validate = subcommands.add_parser("validate", exit_on_error=False)
+    validate.add_argument("--exchange", required=True)
     return parser
 
 

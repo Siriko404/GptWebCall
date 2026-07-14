@@ -7,6 +7,7 @@ import unittest
 from pathlib import Path
 
 from companion.cli import run
+from companion.core import start_call
 
 
 class CLITests(unittest.TestCase):
@@ -76,6 +77,63 @@ class CLITests(unittest.TestCase):
         failure = json.loads(error)
         self.assertFalse(failure["ok"])
         self.assertIn("unsafe", failure["error"])
+
+    def test_validate_finishes_a_manually_collected_prepared_exchange(self):
+        code, output, error = self.invoke("prepare", "--spec", str(self.spec_path))
+        self.assertEqual((code, error), (0, ""))
+        exchange_id = json.loads(output)["result"]["exchange_id"]
+        response = self.root / "calls" / exchange_id / "response" / "cli_result.json"
+        response.write_text(
+            json.dumps(
+                {
+                    "request_id": "request_cli",
+                    "status": "COMPLETE",
+                    "artifacts_manifest": [],
+                    "delivery": ["cli_result.json"],
+                }
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+
+        code, output, error = self.invoke("validate", "--exchange", exchange_id)
+
+        self.assertEqual((code, error), (0, ""))
+        report = json.loads(output)["result"]
+        self.assertEqual(report["status"], "COMPLETE")
+        stored = json.loads(
+            (self.root / "calls" / exchange_id / "EXCHANGE_MANIFEST.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        self.assertEqual(stored["state"], "COMPLETE")
+
+    def test_active_done_and_stop_are_available_without_the_extension(self):
+        code, output, error = self.invoke("prepare", "--spec", str(self.spec_path))
+        self.assertEqual((code, error), (0, ""))
+        exchange_id = json.loads(output)["result"]["exchange_id"]
+        start_call(self.root, exchange_id, 0, [])
+
+        code, output, error = self.invoke("active")
+        self.assertEqual((code, error), (0, ""))
+        self.assertEqual(json.loads(output)["result"]["exchange_id"], exchange_id)
+
+        code, output, error = self.invoke("done")
+        self.assertEqual((code, error), (0, ""))
+        self.assertEqual(json.loads(output)["result"]["status"], "INCOMPLETE")
+
+        second_spec = json.loads(self.spec_path.read_text(encoding="utf-8"))
+        second_spec["subject"] = "Second CLI fixture"
+        second_spec["created_at"] = "2026-07-14T15:45:01-04:00"
+        self.spec_path.write_text(json.dumps(second_spec) + "\n", encoding="utf-8")
+        code, output, error = self.invoke("prepare", "--spec", str(self.spec_path))
+        self.assertEqual((code, error), (0, ""))
+        second_id = json.loads(output)["result"]["exchange_id"]
+        start_call(self.root, second_id, 0, [])
+
+        code, output, error = self.invoke("stop")
+        self.assertEqual((code, error), (0, ""))
+        self.assertEqual(json.loads(output)["result"]["state"], "STOPPED")
 
     @unittest.skipUnless(os.name == "nt", "Windows command wrapper test")
     def test_windows_wrapper_forwards_subcommand_after_root_path(self):
