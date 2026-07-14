@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>GPT Web Call mock surface</title>
+    <style>
+      body { font: 16px/1.5 system-ui, sans-serif; margin: 3rem auto; max-width: 44rem; padding: 0 1rem; }
+      input, a { display: block; margin: 1rem 0; }
+      code { background: #f2f2f2; padding: .1rem .3rem; }
+    </style>
+  </head>
+  <body>
+    <h1>Local attachment/download surface</h1>
+    <p>This is a non-authenticated local test page. It never imitates ChatGPT.</p>
+    <label for="attachments">Attach files</label>
+    <input id="attachments" type="file" multiple>
+    <output id="selected-files">No files selected.</output>
+
+    <h2>Manual download fixtures</h2>
+    <a id="download-main" download="result.json" href="fixtures/result.json">Download main JSON</a>
+    <a id="download-artifact" download="report.md" href="fixtures/report.md">Download valid artifact</a>
+    <a id="download-unrelated" download="unrelated.pdf" href="fixtures/unrelated.pdf">Download unrelated file</a>
+    <a id="download-mismatch" download="report.md" href="fixtures/report-mismatch.md">Download hash-mismatch artifact</a>
+
+    <script>
+      document.querySelector("#attachments").addEventListener("change", (event) => {
+        const names = [...event.target.files].map((file) => file.name);
+        document.querySelector("#selected-files").textContent = names.length
+          ? names.join(", ")
+          : "No files selected.";
+      });
+    </script>
+  </body>
+</html>

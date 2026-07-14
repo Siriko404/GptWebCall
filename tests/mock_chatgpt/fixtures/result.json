@@ -1,0 +1,14 @@
+{
+  "request_id": "fixture_request",
+  "status": "COMPLETE",
+  "artifacts_manifest": [
+    {
+      "filename": "report.md",
+      "status": "CREATED",
+      "media_type": "text/markdown",
+      "size": 7,
+      "sha256": "331d26d6d8f862e46ba900811be8a7a1e4dbaa229b14c99becfd5e5151490d95"
+    }
+  ],
+  "delivery": ["result.json", "report.md"]
+}
