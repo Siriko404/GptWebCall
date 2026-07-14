@@ -2,6 +2,11 @@ import {
   attachmentBasenames,
   buildFileAssignment,
 } from "./lib/attachment.js";
+import {
+  claimCompletedDownload,
+  completedTrackedDownload,
+  shouldObserveDownload,
+} from "./lib/downloads.js";
 
 
 const NATIVE_HOST = "com.sina.gptwebcall";
@@ -37,6 +42,20 @@ chrome.debugger.onEvent.addListener((source, method, params) => {
 });
 
 
+chrome.downloads.onCreated.addListener((downloadItem) => {
+  observeCreatedDownload(downloadItem).catch((error) => {
+    setHandoffStatus("ERROR", error.message).catch(() => undefined);
+  });
+});
+
+
+chrome.downloads.onChanged.addListener((delta) => {
+  submitCompletedDownload(delta).catch((error) => {
+    setHandoffStatus("ERROR", error.message).catch(() => undefined);
+  });
+});
+
+
 async function handlePanelMessage(message) {
   switch (message?.type) {
     case "GET_STATUS":
@@ -45,6 +64,8 @@ async function handlePanelMessage(message) {
       return beginGo(message.exchangeId);
     case "STOP":
       return stopActiveCall();
+    case "DONE":
+      return finishActiveCall();
     default:
       throw new Error(`Unknown extension command: ${message?.type}`);
   }
@@ -55,12 +76,13 @@ async function getStatus() {
   const [ready, active, stored] = await Promise.all([
     nativeCommand("calls.list_ready"),
     nativeCommand("call.active"),
-    chrome.storage.session.get("handoff"),
+    chrome.storage.session.get(["handoff", "lastReport"]),
   ]);
   return {
     ready,
     active,
     handoff: stored.handoff ?? null,
+    lastReport: stored.lastReport ?? null,
   };
 }
 
@@ -90,8 +112,16 @@ async function beginGo(exchangeId) {
       attachmentNames: attachmentBasenames(result.request_paths),
       status: "WAITING_FOR_ATTACH_CLICK",
       message: "Click Attach files in ChatGPT.",
+      monitoring: true,
+      monitoringStartedAt: result.active.started_at,
+      downloadBaseline: result.active.download_baseline,
+      observedDownloadIds: result.active.observed_download_ids,
     };
-    await chrome.storage.session.set({ handoff });
+    await chrome.storage.session.set({
+      handoff,
+      downloadTracker: { ids: [], processing: [] },
+      lastReport: null,
+    });
     await chrome.debugger.attach({ tabId: tab.id }, "1.3");
     await chrome.debugger.sendCommand(
       { tabId: tab.id },
@@ -143,8 +173,75 @@ async function stopActiveCall() {
     await safeDetach(stored.handoff.tabId);
   }
   const result = await nativeCommand("call.stop");
-  await chrome.storage.session.remove("handoff");
+  await chrome.storage.session.remove(["handoff", "downloadTracker"]);
   return result;
+}
+
+
+async function observeCreatedDownload(downloadItem) {
+  const stored = await chrome.storage.session.get(["handoff", "downloadTracker"]);
+  const handoff = stored.handoff;
+  const tracker = stored.downloadTracker ?? { ids: [], processing: [] };
+  if (!shouldObserveDownload(handoff, downloadItem) || tracker.ids.includes(downloadItem.id)) {
+    return;
+  }
+  tracker.ids.push(downloadItem.id);
+  await chrome.storage.session.set({ downloadTracker: tracker });
+}
+
+
+async function submitCompletedDownload(delta) {
+  const stored = await chrome.storage.session.get(["handoff", "downloadTracker"]);
+  const handoff = stored.handoff;
+  const tracker = stored.downloadTracker ?? { ids: [], processing: [] };
+  if (!completedTrackedDownload(handoff, tracker.ids, delta)) {
+    return;
+  }
+  if (!claimCompletedDownload(tracker, delta.id)) {
+    return;
+  }
+  await chrome.storage.session.set({ downloadTracker: tracker });
+
+  const matches = await chrome.downloads.search({ id: delta.id });
+  const item = matches[0];
+  if (!item || item.state !== "complete" || !item.filename) {
+    await setHandoffStatus("ERROR", `Completed download ${delta.id} has no local file.`);
+    return;
+  }
+  const result = await nativeCommand("download.completed", {
+    id: item.id,
+    filename: item.filename,
+    state: "complete",
+    url: item.url,
+    finalUrl: item.finalUrl,
+    mime: item.mime,
+    startTime: item.startTime,
+    endTime: item.endTime,
+  });
+  const updated = {
+    ...handoff,
+    observedDownloadIds: [...new Set([...(handoff.observedDownloadIds ?? []), item.id])],
+    status: `DOWNLOAD_${result.status}`,
+    message: downloadMessage(result),
+  };
+  await chrome.storage.session.set({ handoff: updated, downloadTracker: tracker });
+  await broadcastStatus(updated);
+}
+
+
+async function finishActiveCall() {
+  const stored = await chrome.storage.session.get(["handoff", "downloadTracker"]);
+  if (stored.handoff) {
+    const stopped = { ...stored.handoff, monitoring: false };
+    await chrome.storage.session.set({
+      handoff: stopped,
+      downloadTracker: { ...(stored.downloadTracker ?? { ids: [], processing: [] }), ids: [] },
+    });
+  }
+  const report = await nativeCommand("call.done");
+  await chrome.storage.session.set({ lastReport: report });
+  await chrome.storage.session.remove(["handoff", "downloadTracker"]);
+  return report;
 }
 
 
@@ -189,5 +286,22 @@ async function broadcastStatus(handoff) {
     await chrome.runtime.sendMessage({ type: "HANDOFF_STATUS", handoff });
   } catch (_error) {
     // The side panel may be closed; session storage remains authoritative.
+  }
+}
+
+
+function downloadMessage(result) {
+  switch (result.status) {
+    case "MOVED":
+      return `${result.stored_name} moved to this call's response folder.`;
+    case "PENDING":
+      return "Download saved as a candidate; waiting for the main JSON to name it.";
+    case "IGNORED":
+      return "Download left untouched because it is not part of this call.";
+    case "INVALID":
+    case "CONFLICT":
+      return result.error ?? "Download was not collected.";
+    default:
+      return `Download status: ${result.status}.`;
   }
 }

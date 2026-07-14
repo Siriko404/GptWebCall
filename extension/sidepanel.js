@@ -3,7 +3,9 @@ const summary = document.querySelector("#call-summary");
 const status = document.querySelector("#status");
 const attachments = document.querySelector("#attachments");
 const goButton = document.querySelector("#go-button");
+const doneButton = document.querySelector("#done-button");
 const stopButton = document.querySelector("#stop-button");
+const validationReport = document.querySelector("#validation-report");
 
 
 goButton.addEventListener("click", async () => {
@@ -23,6 +25,20 @@ stopButton.addEventListener("click", async () => {
   setBusy(true);
   try {
     await send({ type: "STOP" });
+    await refresh();
+  } catch (error) {
+    status.textContent = error.message;
+  } finally {
+    setBusy(false);
+  }
+});
+
+
+doneButton.addEventListener("click", async () => {
+  setBusy(true);
+  try {
+    const report = await send({ type: "DONE" });
+    renderReport(report);
     await refresh();
   } catch (error) {
     status.textContent = error.message;
@@ -56,11 +72,14 @@ async function refresh() {
     } else if (state.active) {
       status.textContent = "A call is active. Stop it or resume after reopening Chrome.";
       stopButton.hidden = false;
+      doneButton.hidden = false;
       goButton.disabled = true;
     } else {
       status.textContent = "Ready.";
       stopButton.hidden = true;
+      doneButton.hidden = true;
     }
+    renderReport(state.lastReport);
   } catch (error) {
     status.textContent = `Local companion unavailable: ${error.message}`;
     goButton.disabled = true;
@@ -91,13 +110,35 @@ function renderHandoff(handoff) {
     attachments.append(item);
   }
   goButton.disabled = true;
+  doneButton.hidden = false;
   stopButton.hidden = false;
+}
+
+
+function renderReport(report) {
+  if (!report) {
+    validationReport.hidden = true;
+    validationReport.textContent = "";
+    return;
+  }
+  const details = [];
+  if (report.missing_files?.length) {
+    details.push(`Missing: ${report.missing_files.join(", ")}`);
+  }
+  if (report.invalid_files?.length) {
+    details.push(`Invalid: ${report.invalid_files.join(", ")}`);
+  }
+  validationReport.textContent = report.status === "COMPLETE"
+    ? "Complete. Main JSON and required artifacts validated."
+    : `Incomplete. ${details.join("\n") || "See validation report."}`;
+  validationReport.hidden = false;
 }
 
 
 function setBusy(busy) {
   goButton.disabled = busy || select.options.length === 0;
   stopButton.disabled = busy;
+  doneButton.disabled = busy;
 }
 
 
