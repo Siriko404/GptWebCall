@@ -27,6 +27,44 @@ class ProtocolTests(unittest.TestCase):
         ):
             self.assertIn(required, protocol)
 
+    def test_protocol_contains_every_fresh_session_operation(self):
+        protocol = (self.root / "WEB_CALL_PROTOCOL.md").read_text(encoding="utf-8")
+
+        for heading in (
+            "## Fresh-session contract",
+            "## Exact request construction",
+            "## Call decomposition and continuation",
+            "## Command reference",
+            "## Semantic acceptance",
+            "## Failure and correction rules",
+            "## Compaction and handoff",
+        ):
+            self.assertIn(heading, protocol)
+        for command in (
+            ".\\gptwebcall.cmd prepare --spec",
+            ".\\gptwebcall.cmd list",
+            ".\\gptwebcall.cmd show --exchange",
+            ".\\gptwebcall.cmd active",
+            ".\\gptwebcall.cmd done",
+            ".\\gptwebcall.cmd stop",
+            ".\\gptwebcall.cmd validate --exchange",
+        ):
+            self.assertIn(command, protocol)
+        for contract_term in (
+            '"subject"',
+            '"request_id"',
+            '"expected_main_json"',
+            '"prompt_text"',
+            '"input_files"',
+            '"artifacts_manifest"',
+            '"delivery"',
+            "Resume attachment",
+            "Sina clicks",
+            "advisory",
+            "new correction call",
+        ):
+            self.assertIn(contract_term, protocol)
+
     def test_native_host_template_is_origin_pinned_and_scripts_are_safe(self):
         template = json.loads(
             (self.root / "native-host" / "com.sina.gptwebcall.template.json").read_text(

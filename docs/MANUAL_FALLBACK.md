@@ -1,11 +1,14 @@
 # Manual fallback
 
-The manual fallback preserves the same evidence layout if the extension is unavailable.
+Use this when the extension is unavailable. `WEB_CALL_PROTOCOL.md` remains authoritative.
 
-1. Use `.\gptwebcall.cmd list` and select one `PREPARED` exchange.
-2. Open its `EXCHANGE_MANIFEST.json`; upload exactly the files listed in `request_files` from its `request\` directory, including `PROMPT_YYYY-MM-DD_HHMMSS.txt`.
-3. In ChatGPT Web, manually send the prepared files. Download the required main JSON and every listed artifact.
-4. Copy only those returned files into that exchange's `response\` directory. Do not replace a different existing file.
-5. Reopen the extension and click **Done and validate**. It writes `validation\VALIDATION_REPORT.json` and reports missing or invalid files.
+1. From the canonical root, run `.\gptwebcall.cmd active` and `.\gptwebcall.cmd list`.
+2. Select one exchange; inspect it with `.\gptwebcall.cmd show --exchange <exchange_id>`.
+3. Upload exactly its manifest-listed files from `request\`, including the generated timestamped prompt.
+4. Sina clicks ChatGPT's native Send and manually downloads the expected main JSON plus all created artifacts.
+5. Place only those returned files in that exchange's `response\` directory under their expected names. Never overwrite different existing bytes.
+6. If the exchange was never active, run `.\gptwebcall.cmd validate --exchange <exchange_id>`.
+7. If it is active, run `.\gptwebcall.cmd done`.
+8. Read `validation\VALIDATION_REPORT.json`; then perform semantic review before using the output.
 
-If another call is active, stop it first; never create competing active-call state. Unrelated downloads are not evidence and should remain outside the response folder.
+Use `.\gptwebcall.cmd stop` only to abandon an active call. Unrelated downloads remain outside the response folder. A substantive repair requiring ChatGPT reasoning becomes a new correction call; the original exchange stays unchanged.

@@ -17,6 +17,8 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'Native host build failed' }
     .\tests\e2e\fixture_call.ps1
     if ($LASTEXITCODE -ne 0) { throw 'Fixture call failed' }
+    .\tests\e2e\manual_fallback.ps1
+    if ($LASTEXITCODE -ne 0) { throw 'Manual fallback failed' }
     git diff --check
     if ($LASTEXITCODE -ne 0) { throw 'Git whitespace validation failed' }
 }

@@ -10,5 +10,5 @@ Automated tests do not substitute for this manual Chrome/ChatGPT check. Use only
 - [ ] Confirm the unrelated file remains in Downloads and the matching files move to the exchange response directory.
 - [ ] Click Done and validate. Confirm the panel shows `COMPLETE` and `validation\VALIDATION_REPORT.json` exists.
 - [ ] Start another fixture; download a hash-mismatched artifact and confirm Done reports it invalid/incomplete without overwriting anything.
-- [ ] Restart Chrome during an active call. Confirm the panel exposes recovery/Stop and does not resend or reattach files automatically.
+- [ ] Restart Chrome during an active call. Confirm the panel exposes Resume attachment/Stop and does not resend or reattach files automatically.
 - [ ] With the extension disabled, follow `docs\MANUAL_FALLBACK.md` and confirm validation can still be completed safely.
