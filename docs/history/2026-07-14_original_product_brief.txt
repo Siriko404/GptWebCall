@@ -1,0 +1,874 @@
+CHATGPT WEB CALL ASSISTANT
+Nontechnical Product and Workflow Brief for Codex
+
+PURPOSE OF THIS DOCUMENT
+
+This document explains the system we designed for using Codex and ChatGPT Web together on very large projects.
+
+It describes what the system is supposed to accomplish, how the user experiences it, what each part is responsible for, and how work moves from beginning to completion.
+
+This document intentionally avoids technical implementation details. Codex should determine the technical architecture, browser-extension design, file handling, validation methods, and implementation plan.
+
+The goal is to make the intended behavior completely clear before implementation begins.
+
+
+1. THE PROBLEM THIS SYSTEM SOLVES
+
+The user works on projects that are much larger than the context window of a single ChatGPT conversation.
+
+Examples include:
+
+- A complete thesis and defense presentation
+- A large research project with many source documents
+- A complex software or design project
+- A long report requiring many rounds of analysis
+- A project with many decisions, drafts, references, and supporting files
+
+A single ChatGPT Web conversation cannot reliably hold the entire project forever. Even when one individual task fits inside the available context window, the whole project may not.
+
+The solution is not to force the entire project into one conversation.
+
+Instead, the system treats ChatGPT Web as a powerful intellectual worker that receives one carefully prepared intellectual task at a time.
+
+Codex acts as the working hand and project manager. It keeps track of the full project, prepares each intellectual assignment, organizes the necessary files, receives the result, validates it, and continues until the entire project is complete.
+
+The browser extension acts as a simple and controlled bridge between Codex and ChatGPT Web.
+
+The user remains in control of every actual ChatGPT Web call.
+
+
+2. THE CENTRAL IDEA
+
+The system divides work into two broad types.
+
+LABOR WORK
+
+Labor work includes tasks that do not require major judgment or deep reasoning.
+
+Examples:
+
+- Finding and organizing files
+- Copying the correct project materials
+- Renaming files
+- Creating folders
+- Updating checklists
+- Tracking which tasks are complete
+- Comparing outputs against required deliverables
+- Moving finished work into the correct project location
+- Preparing the next assignment
+
+Codex performs this work directly.
+
+INTELLECTUAL WORK
+
+Intellectual work includes tasks where the quality of reasoning, interpretation, judgment, synthesis, critique, or creativity materially affects the final result.
+
+Examples:
+
+- Designing the argument of a thesis defense
+- Interpreting research findings
+- Identifying weaknesses in an analysis
+- Deciding how to explain a complex idea
+- Comparing competing strategic choices
+- Rewriting an important section
+- Designing a presentation narrative
+- Reviewing whether evidence truly supports a claim
+- Integrating several analyses into one coherent conclusion
+
+ChatGPT Web performs these bounded intellectual assignments.
+
+The key principle is:
+
+Codex manages the project.
+ChatGPT Web performs carefully defined intellectual calls.
+The user authorizes each call.
+The project files preserve the long-term memory.
+
+
+3. WHY THIS SOLVES THE CONTEXT-WINDOW PROBLEM
+
+The system does not expect one ChatGPT conversation to remember the whole project.
+
+Instead, every intellectual task receives only the context required for that task.
+
+For example, a complete thesis may be too large to analyze repeatedly in one conversation. However, one task such as “evaluate the identification strategy and prepare the defense explanation” may fit comfortably when supplied with:
+
+- The relevant thesis sections
+- The related tables and results
+- The project’s approved terminology
+- Important prior decisions
+- The exact requested output
+
+When that task is finished, its result becomes part of the project’s permanent files.
+
+The next call receives a different, carefully selected context package.
+
+As a result, the total project can be extremely large even though each individual call stays within ChatGPT Web’s context limit.
+
+
+4. THE THREE MAIN PARTICIPANTS
+
+A. CODEX: THE WORKING HAND AND ORCHESTRATOR
+
+Codex is responsible for managing the entire workflow.
+
+Codex should:
+
+- Understand the overall user objective
+- Break the project into manageable tasks
+- Distinguish labor work from intellectual work
+- Perform labor work itself
+- Prepare intellectual assignments for ChatGPT Web
+- Select the files and context needed for each call
+- Explain the purpose of every call clearly
+- Define what a successful answer must contain
+- Place each prepared call in a dedicated input folder
+- Present the next call to the user through the extension
+- Wait for the user to complete the call
+- Collect the returned output after the user presses Done
+- Check whether the expected output was received
+- Store the output in the correct project location
+- Update the project state
+- Decide what should happen next
+- Continue until every requirement is satisfied
+
+Codex should not merely produce a collection of disconnected calls. It must manage the complete project from beginning to end.
+
+B. CHATGPT WEB: THE INTELLECTUAL WORKER
+
+ChatGPT Web receives one bounded intellectual assignment at a time.
+
+Each assignment should clearly explain:
+
+- The exact question or task
+- Why the task matters
+- The relevant project context
+- Which files are authoritative
+- What previous decisions must be respected
+- What output is required
+- What must not be changed or invented
+- How completeness will be judged
+
+ChatGPT Web is not expected to manage the whole project or remember prior calls unless the necessary information is included in the current call.
+
+C. THE USER: THE AUTHORIZING HUMAN
+
+The user remains in control of all ChatGPT Web interactions.
+
+The user should not have to manually assemble prompts, find files, copy context, name outputs, or organize results.
+
+The user’s role should be simple:
+
+1. Review the prepared call.
+2. Press Go when ready.
+3. Allow ChatGPT Web to complete the task.
+4. Review or save the result using the normal ChatGPT controls.
+5. Press Done.
+6. Let Codex continue.
+
+The user is the final authority. The system assists the user but should never hide what is being sent or silently perform intellectual calls without the user’s awareness.
+
+
+5. THE ROLE OF THE CHROME EXTENSION
+
+The Chrome extension is a user-controlled bridge.
+
+It should make each prepared ChatGPT Web call easy to execute without requiring the user to repeat mechanical steps.
+
+The extension should provide two main actions:
+
+GO
+
+The Go action begins the next prepared intellectual call.
+
+From the user’s point of view, pressing Go should:
+
+- Show which project and task is about to be sent
+- Show a short human-readable summary of the assignment
+- Show which files are included
+- Show the expected result
+- Open the correct ChatGPT Web environment
+- Prepare the prompt and attachments
+- Leave the user with a clear final confirmation or sending action
+
+The system should never surprise the user with hidden content.
+
+The user should be able to inspect the prepared assignment before it is sent.
+
+DONE
+
+The Done action tells the system that ChatGPT Web has finished the assignment and the user is ready for Codex to collect the result.
+
+From the user’s point of view, pressing Done should:
+
+- Gather the response and any files the user saved or exported
+- Place them in the correct call folder
+- Associate them with the correct task
+- Confirm that the expected outputs are present
+- Warn the user if something appears missing
+- Return control to Codex
+- Allow Codex to validate the result and continue
+
+The extension should reduce repetitive effort, not remove user awareness or control.
+
+
+6. THE COMPLETE WORKFLOW
+
+STEP 1: THE USER GIVES CODEX A PROJECT OR TASK
+
+Example:
+
+“Rebuild my thesis defense presentation from the thesis, audit report, and current presentation reference. Continue until the full defense package is complete.”
+
+Codex studies the project, identifies the required outcomes, and creates a work plan.
+
+STEP 2: CODEX SEPARATES LABOR FROM INTELLECTUAL WORK
+
+Codex performs labor work directly.
+
+For intellectual work, Codex creates one or more bounded ChatGPT Web calls.
+
+Some tasks may require only one call.
+
+Large tasks may require a sequence such as:
+
+- Planning call
+- Specialist analysis calls
+- Critic calls
+- Revision calls
+- Integration call
+- Final audit call
+
+STEP 3: CODEX PREPARES A CALL PACKAGE
+
+For each ChatGPT Web call, Codex creates a dedicated package containing:
+
+- A plain-language task description
+- The exact objective
+- The necessary project context
+- The relevant source files
+- Important prior decisions
+- Restrictions and non-negotiable rules
+- The required output
+- A completeness checklist
+- A unique call identity
+
+The package should contain enough information for ChatGPT Web to perform the task independently without unnecessary unrelated material.
+
+STEP 4: THE EXTENSION SHOWS THE NEXT CALL
+
+The extension displays a clear summary such as:
+
+Project:
+Thesis Defense Reconstruction
+
+Call:
+Design the research-contribution narrative
+
+Purpose:
+Create a defensible explanation of the paper’s contribution using only the approved thesis evidence.
+
+Included materials:
+- Thesis introduction
+- Literature review
+- Main findings
+- Audit report
+- Approved terminology file
+
+Expected output:
+- Contribution narrative
+- Slide recommendations
+- Claim-to-evidence mapping
+- Remaining uncertainties
+
+The user can inspect the package and press Go.
+
+STEP 5: THE CALL IS SENT WITH USER AUTHORIZATION
+
+The extension simplifies the process of preparing ChatGPT Web.
+
+The user remains the one who knowingly authorizes the call.
+
+ChatGPT Web then performs the intellectual assignment.
+
+STEP 6: THE USER REVIEWS THE RESULT
+
+The user can read the response and use ChatGPT Web’s normal controls to copy, save, or download the result.
+
+The user then presses Done.
+
+STEP 7: THE EXTENSION COLLECTS THE RESULT
+
+The extension associates the result with the correct call and makes it available to Codex.
+
+If the expected deliverables are incomplete, the system should identify the problem instead of pretending the call succeeded.
+
+STEP 8: CODEX VALIDATES THE RESULT
+
+Codex checks questions such as:
+
+- Did ChatGPT return every requested output?
+- Are required files present?
+- Did the response follow the requested structure?
+- Were important constraints ignored?
+- Does the output conflict with approved project decisions?
+- Are claims connected to evidence?
+- Is a critic or revision call required?
+- Can the result now be merged into the project?
+
+STEP 9: CODEX CONTINUES
+
+Codex updates the project state and performs the next action.
+
+That action may be:
+
+- Accept and integrate the result
+- Prepare a correction call
+- Prepare a critic call
+- Send a related specialist call
+- Ask ChatGPT to integrate multiple accepted outputs
+- Complete labor work
+- Declare the project complete after final verification
+
+
+7. TYPES OF CHATGPT WEB CALLS
+
+The system should understand that not all intellectual calls serve the same purpose.
+
+A. PLANNING OR ARCHITECT CALL
+
+Used when the correct structure of the work is itself uncertain.
+
+Example:
+
+“Determine the best intellectual work breakdown for rebuilding this defense presentation. Identify the major reasoning tasks, dependencies, required source materials, and final integration steps.”
+
+This prevents Codex from using a weak or overly mechanical task breakdown.
+
+B. SPECIALIST CALL
+
+Used for one specific intellectual problem.
+
+Examples:
+
+- Interpret the empirical results
+- Design the introduction narrative
+- Explain the identification strategy
+- Rewrite the limitations section
+- Propose the visual logic of several slides
+
+C. CRITIC CALL
+
+Used to challenge an existing output.
+
+Examples:
+
+- Find unsupported claims
+- Identify missing evidence
+- Detect contradictions
+- Evaluate whether the argument is persuasive
+- Check whether the output answered the real question
+- Determine whether important project instructions were ignored
+
+D. REVISION CALL
+
+Used to repair an output based on clearly identified criticism.
+
+The revision call should receive:
+
+- The original assignment
+- The original output
+- The critic’s findings
+- The exact required corrections
+
+E. INTEGRATION CALL
+
+Used to combine several accepted outputs into one coherent whole.
+
+Examples:
+
+- Combine chapter-level analyses into a full defense narrative
+- Merge several specialist reports into one final report
+- Reconcile slide recommendations from different calls
+- Produce one consistent final artifact
+
+F. FINAL AUDIT CALL
+
+Used near completion to evaluate the entire assembled work.
+
+The final audit should look for:
+
+- Missing requirements
+- Internal contradictions
+- Weak transitions
+- Unsupported conclusions
+- Inconsistent terminology
+- Duplication
+- Unresolved issues
+- Failure to respect the original project objective
+
+
+8. USER EXPERIENCE PRINCIPLES
+
+The system should feel calm, understandable, and controlled.
+
+The user should always know:
+
+- What task is being sent
+- Why it is being sent
+- Which files are included
+- What result is expected
+- Whether the call succeeded
+- What Codex will do next
+
+The user should not have to:
+
+- Search for the relevant files
+- Copy long prompts manually
+- Remember which call belongs to which project
+- Create folders
+- Rename outputs
+- Track task dependencies
+- Check whether every requirement has been covered
+- Reconstruct project history from many conversations
+
+The system should minimize interruptions.
+
+However, it should not hide meaningful decisions from the user.
+
+For ordinary calls, the interaction should require only a small number of actions:
+
+1. Review.
+2. Go.
+3. Review the answer.
+4. Save or copy through normal ChatGPT controls.
+5. Done.
+
+
+9. EXAMPLE SCENARIO 1: THESIS DEFENSE PRESENTATION
+
+USER GOAL
+
+The user asks Codex:
+
+“Use my thesis, audit report, and previous presentation materials to create a complete and defensible thesis defense presentation.”
+
+WHAT CODEX DOES
+
+Codex first organizes the source materials and identifies which files are authoritative.
+
+It then determines that the project requires several intellectual assignments:
+
+- Design the overall defense narrative
+- Explain the research question
+- Explain the literature gap
+- Explain the data and methods
+- Interpret the results
+- Build the contribution argument
+- Identify likely committee objections
+- Design the conclusion
+- Audit the complete presentation
+
+USER EXPERIENCE
+
+The extension displays:
+
+“Next call: Design the overall defense narrative.”
+
+The user sees:
+
+- Why this call is necessary
+- Which thesis sections are included
+- Which previous presentation materials are included
+- The expected narrative structure
+- The instruction not to invent findings
+
+The user presses Go.
+
+ChatGPT Web produces the narrative plan.
+
+The user saves the result and presses Done.
+
+Codex receives the result, checks it, and determines that the next call should focus on the identification strategy.
+
+Later, Codex sends a critic call asking ChatGPT Web to challenge the completed narrative.
+
+After revisions, Codex prepares a final integration call containing the accepted section-level work.
+
+At the end, Codex performs final checks and confirms that every required presentation component has been addressed.
+
+
+10. EXAMPLE SCENARIO 2: LARGE RESEARCH LITERATURE REVIEW
+
+USER GOAL
+
+The user asks:
+
+“Create a comprehensive literature review across several research streams and identify a defensible research gap.”
+
+WHAT CODEX DOES
+
+Codex organizes the papers and existing notes.
+
+Because the literature is too large for one efficient call, Codex creates separate specialist calls for:
+
+- Theoretical foundations
+- Measurement approaches
+- Empirical findings
+- Methodological limitations
+- Conflicting results
+- Recent developments
+
+Each call receives only the relevant papers and project rules.
+
+USER EXPERIENCE
+
+The extension says:
+
+“Next call: Compare measurement methods across the selected papers.”
+
+The user reviews the included papers and presses Go.
+
+After the response is complete, the user presses Done.
+
+Codex stores the output and prepares the next call.
+
+After all specialist calls are complete, Codex sends an integration call asking ChatGPT Web to:
+
+- Reconcile the different streams
+- Identify genuine agreement and disagreement
+- Separate established findings from open questions
+- Propose research gaps supported by the collected evidence
+
+A critic call then tests whether the proposed gaps are real or merely weak variations of existing work.
+
+
+11. EXAMPLE SCENARIO 3: COMPLEX SOFTWARE OR PRODUCT PROJECT
+
+USER GOAL
+
+The user asks:
+
+“Design the complete behavior and user experience of a complex application.”
+
+WHAT CODEX DOES
+
+Codex handles project files and task tracking.
+
+It identifies intellectual calls such as:
+
+- Clarify the product concept
+- Define the user journey
+- Identify edge cases
+- Evaluate competing design choices
+- Critique the proposed workflow
+- Produce the final product specification
+
+USER EXPERIENCE
+
+The extension displays:
+
+“Next call: Identify user-facing failure cases and recovery behavior.”
+
+The user sees the current product brief and earlier approved decisions.
+
+The user presses Go.
+
+ChatGPT Web analyzes situations such as:
+
+- Missing files
+- Incomplete outputs
+- A user pressing Done too early
+- A call returning the wrong format
+- Two results contradicting each other
+- A task that cannot be completed with the available evidence
+
+The user presses Done.
+
+Codex incorporates the result into the project specification and continues to the next task.
+
+
+12. EXAMPLE SCENARIO 4: REVISING A LONG REPORT
+
+USER GOAL
+
+The user asks:
+
+“Improve this long report without losing important details, changing approved conclusions, or introducing unsupported claims.”
+
+WHAT CODEX DOES
+
+Codex divides the report into meaningful intellectual sections rather than arbitrary page ranges.
+
+Each call receives:
+
+- The section to revise
+- The nearby sections needed for continuity
+- The report’s approved conclusions
+- The tone and audience
+- The evidence relevant to that section
+- A list of facts that must remain unchanged
+
+USER EXPERIENCE
+
+The extension displays:
+
+“Next call: Revise the executive-summary argument.”
+
+The user presses Go.
+
+ChatGPT Web returns the revised section plus a note explaining which claims were preserved and which wording was changed.
+
+The user presses Done.
+
+Codex checks that the revision did not alter approved facts.
+
+After all sections are revised, an integration call checks consistency across the entire report.
+
+
+13. EXAMPLE SCENARIO 5: A CALL FAILS OR RETURNS AN INCOMPLETE ANSWER
+
+SITUATION
+
+ChatGPT Web returns a good analysis but forgets one requested deliverable.
+
+For example, it provides the narrative but does not include the requested claim-to-evidence mapping.
+
+USER EXPERIENCE
+
+The user presses Done.
+
+The system does not silently mark the task complete.
+
+Instead, Codex detects that an expected output is missing.
+
+The extension later displays:
+
+“Correction required: The previous call did not include the claim-to-evidence mapping.”
+
+The new call package includes:
+
+- The original task
+- The previous response
+- A precise explanation of what is missing
+- A request to provide only the missing or corrected material
+
+The user presses Go.
+
+After the corrected output is received, Codex validates the call again.
+
+
+14. EXAMPLE SCENARIO 6: THE USER WANTS TO REVIEW BEFORE CONTINUING
+
+SITUATION
+
+The user wants Codex to pause after a major intellectual milestone.
+
+USER EXPERIENCE
+
+The extension shows:
+
+“Milestone reached: Overall defense narrative completed.”
+
+It summarizes:
+
+- What has been completed
+- Which outputs were accepted
+- Which issues remain open
+- What the next call would do
+
+The user can either:
+
+- Continue
+- Pause
+- Reject a result
+- Add a new instruction
+- Ask Codex to revise the plan
+
+Codex then updates the project state accordingly.
+
+
+15. SAFETY AND CONTROL PRINCIPLES
+
+The system should be designed around explicit user control.
+
+The system should:
+
+- Make every outgoing call visible
+- Allow the user to inspect the prompt and attachments
+- Require an intentional user action before a call is sent
+- Avoid hidden or unattended use of ChatGPT Web
+- Use normal ChatGPT controls for copying, saving, or downloading results
+- Avoid silently collecting unrelated page content
+- Avoid sending files the user did not approve
+- Preserve a clear record of what was sent and what was received
+- Make failures visible
+- Never pretend that a partial result is complete
+- Allow the user to stop the process at any time
+
+The phrase “100% safe and reliable” should be treated as a design ambition, not a literal guarantee.
+
+No browser-based workflow can guarantee perfect reliability under every condition because:
+
+- Web interfaces can change
+- A connection can fail
+- A response can be interrupted
+- A model can misunderstand a task
+- A user can close the page
+- A file can be missing
+- A call can reach a usage limit
+
+Therefore, the design should focus on:
+
+- Maximum user control
+- Clear failure detection
+- Easy recovery
+- No silent loss of work
+- No silent continuation after an incomplete call
+- Complete traceability
+- Repeatable steps
+
+
+16. RELIABILITY PRINCIPLES
+
+A call should not be treated as complete simply because ChatGPT produced a response.
+
+A call is complete only when:
+
+- The correct assignment was sent
+- The required files were included
+- The response was received
+- All expected outputs are present
+- The result respects the instructions
+- The result does not conflict with higher-authority project decisions
+- Any necessary criticism or revision has been completed
+- Codex has stored and integrated the result
+- The project state has been updated
+
+The system should always know the status of each call.
+
+Examples of meaningful statuses include:
+
+- Prepared
+- Ready for user
+- Sent
+- Response in progress
+- Ready to collect
+- Collected
+- Incomplete
+- Needs revision
+- Accepted
+- Integrated
+- Failed
+- Paused
+
+The exact technical representation is Codex’s responsibility.
+
+
+17. WHAT “DONE” MEANS FOR THE WHOLE PROJECT
+
+The system should not declare the project complete merely because all planned calls were sent.
+
+The project is complete only when:
+
+- Every original requirement has been addressed
+- Every required artifact exists
+- Important outputs have been reviewed
+- Known contradictions have been resolved
+- Missing information has been identified
+- Accepted outputs have been integrated
+- The final result is internally consistent
+- A final audit has been completed
+- The user’s stated objective has been satisfied
+
+Codex should maintain a clear connection between:
+
+- User requirements
+- Planned tasks
+- ChatGPT Web calls
+- Returned outputs
+- Validation results
+- Final artifacts
+
+This is how the system proves that the project is actually complete.
+
+
+18. WHAT THE SYSTEM SHOULD NOT BECOME
+
+The system should not become:
+
+- A hidden bot that operates ChatGPT Web without user awareness
+- A tool that sends every project file into every call
+- A chain of disconnected prompts
+- A system that trusts every response automatically
+- A system that loses track of which answer belongs to which task
+- A system that treats quantity of calls as proof of completion
+- A system that forces the user to organize everything manually
+- A system that depends on one giant conversation
+- A system that silently changes approved project decisions
+- A system that continues after a major failure without informing the user
+
+
+19. THE DESIRED END STATE
+
+From the user’s point of view, the finished system should feel like this:
+
+“I give Codex a large objective.
+
+Codex organizes the project and performs all routine work.
+
+Whenever deep judgment is required, Codex prepares a complete ChatGPT Web assignment.
+
+The extension shows me exactly what is about to happen.
+
+I press Go.
+
+ChatGPT Web performs the intellectual work.
+
+I review the result, save it through the normal ChatGPT interface, and press Done.
+
+Codex collects the result, checks it, stores it, and continues.
+
+I do not have to repeatedly find files, rebuild context, copy prompts, track outputs, or remember what remains unfinished.
+
+The project continues through as many bounded intellectual calls as necessary until all requirements are genuinely complete.”
+
+
+20. CORE DESIGN STATEMENT
+
+The complete concept can be summarized as follows:
+
+Codex is the permanent project manager, working hand, memory keeper, context preparer, validator, and integrator.
+
+ChatGPT Web is used for bounded intellectual assignments that fit within one call.
+
+The Chrome extension reduces the user’s mechanical effort while keeping the user in control through clear Go and Done actions.
+
+The project files preserve continuity across all calls.
+
+The system uses planning, specialist analysis, criticism, revision, integration, and final auditing as needed.
+
+The system never relies on one conversation to contain the whole project.
+
+The system continues until the original project requirements are satisfied, not merely until every planned call has returned a response.
+
+
+21. IMPLEMENTATION RESPONSIBILITY GIVEN TO CODEX
+
+Codex should now use this product description to determine:
+
+- The technical architecture
+- The browser-extension behavior
+- The folder and file structure
+- The call-package format
+- The user-interface design
+- The state-tracking approach
+- The validation system
+- The recovery process
+- The handling of missing or incomplete outputs
+- The method for preserving project history
+- The implementation phases
+- The testing plan
+- The security and privacy safeguards
+
+Codex should preserve the user-facing behavior and principles described in this document, while choosing the safest, simplest, and most reliable implementation.

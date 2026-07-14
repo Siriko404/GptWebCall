@@ -1,0 +1,610 @@
+{
+  "protocol_version": "2.0",
+  "request_id": "web-call-assistant-system-design-2026-07-14-v1",
+  "status": "COMPLETE",
+  "verdict": "APPROVE",
+  "executive_summary": "Approve a thin Chrome Manifest V3 side-panel extension connected to a durable local companion through native messaging, subject to Sina's explicit approval of the decision register before implementation. The local companion should own SQLite state, exchange files, hashes, validation, recovery, and project-completion records; the extension should own only visible Go/Done interaction and transient browser coordination; Codex should remain the project manager, semantic validator, and integrator; and the user should remain the person who attaches files, presses ChatGPT Send, reviews output, downloads files, and selects them for collection. The current manual protocol is a strong evidence and fallback foundation but lacks a durable state machine, idempotency, exact package digest, project-level completion graph, concurrency model, security/privacy gate, and implemented bridge. Current OpenAI Terms prohibit automatic/programmatic extraction of data or output, so the recommended baseline does not scrape the response page or use private endpoints: Done opens a native user-controlled file picker after the user downloads files normally. The two attached Markdown artifacts provide the complete candidate design and a dependency-ordered implementation/testing roadmap; no code or executable implementation has been created in this call.",
+  "work_performed": [
+    {
+      "work_id": "W1",
+      "status": "COMPLETE",
+      "summary": "Reconstructed the current manual workflow from every uploaded file, separated documented behavior from inference, identified retained strengths, and produced a prioritized gap/disposition audit. The audit highlights the missing durable lifecycle, weak request-response byte binding, absent project-completion model, defense-specific universal path, singleton active request, schema integrity gaps, privacy/secret omissions, filename ambiguity, and the absence of an implemented bridge/test harness."
+    },
+    {
+      "work_id": "W2",
+      "status": "COMPLETE",
+      "summary": "Compared four feasible architectures—extension-only, thin extension plus native companion, extension plus loopback service, and full browser automation/RPA—using an explicit weighted matrix covering reliability, security, maintainability, UI resilience, portability, effort, testability, and user control. Recommended the native-messaging hybrid and documented technology, permission, trust, and policy boundaries with current primary-source citations."
+    },
+    {
+      "work_id": "W3",
+      "status": "COMPLETE",
+      "summary": "Designed the complete Prepare-to-Go-to-Done-to-Validated-to-Integrated lifecycle, canonical states, transition contract, idempotency and retry semantics, crash/duplicate/stale/concurrency behavior, durable SQLite/event/file model, v3 data contracts, and read-only legacy migration strategy."
+    },
+    {
+      "work_id": "W4",
+      "status": "COMPLETE",
+      "summary": "Defined layered request, authorization, collection, structural, semantic, integration, and whole-project completion gates; documented invariants, observability, a failure taxonomy, recovery playbooks, and a threat model covering extension, native host, filesystem, browser session, model output, policy, privacy, and operational risks."
+    },
+    {
+      "work_id": "W5",
+      "status": "COMPLETE",
+      "summary": "Created a phased implementation and verification roadmap beginning with a smallest coherent end-to-end vertical slice. Every phase specifies scope, outputs, prerequisites, risks, automated/manual tests, acceptance evidence, exit criteria, rollback, and deferrals; the roadmap includes a consolidated test matrix, release gates, failure injection, UAT, and explicit preservation of the manual workflow."
+    }
+  ],
+  "question_responses": [
+    {
+      "question_id": "Q1",
+      "judgment": "SUPPORTED",
+      "answer": "The current system already provides a universal reasoning gate, bounded task requests, ranked source authority, timestamped isolated request/response exchanges, a mandatory schema-constrained response attachment and artifact manifest, explicit manual user transport, Codex validation, advisory treatment of Web output, and retained exchange evidence. It does not yet provide the upgraded product: there is no extension or companion, durable lifecycle, idempotency, crash recovery, exact package digest, safe response collection mechanism, concurrent-project model, revision lineage, project requirement/completion graph, sensitivity gate, or comprehensive test harness. Several current contracts validate JSON shape but cannot prove that a COMPLETE response contains every requested ID/artifact or corresponds to the exact uploaded bytes.",
+      "reasoning_summary": "The working manual protocol is not a failed prototype; it is a strong fallback and evidence format. The highest-priority defects are the missing durable operational model and weak byte-level request/response binding. Features such as the extension and completion dashboard are genuinely absent rather than defective. The design retains the manual evidence principles while adding state, identity, safety, and recovery.",
+      "evidence": [
+        {
+          "source": "CHATGPT_WEB_PROTOCOL.json",
+          "location": "JSON Pointers /triage, /gate, /directory_contract, /workflow, /delivery_contract, and /active_request",
+          "support": "Documents the current gate, manual transport, timestamped exchange layout, validation workflow, file-only delivery, and singleton active-request representation."
+        },
+        {
+          "source": "WEB_REQUEST_SCHEMA(1).json and WEB_RESPONSE_SCHEMA(1).json",
+          "location": "Request /properties/inputs and /properties/context; response /properties/work_performed, /properties/question_responses, /properties/artifacts_manifest, /properties/provenance, and /properties/delivery_contract",
+          "support": "Shows the existing structured contracts and the absence of package digests, conditional completeness, exact requested-ID equality, strong provenance, and project/call lineage."
+        },
+        {
+          "source": "chatgpt_web_call_assistant_brief(1).txt",
+          "location": "Sections 15–17, lines 691–793",
+          "support": "Defines safety, meaningful statuses, reliability conditions, and whole-project completion that are not yet machine-represented."
+        }
+      ],
+      "required_changes": [
+        "Retain the manual exchange and validation model as a permanent fallback.",
+        "Replace the singleton active-request authority with per-project/per-call durable records and an evented state machine.",
+        "Add exact package manifests/digests, response binding, revision lineage, and project completion evidence.",
+        "Version new contracts without rewriting legacy exchanges."
+      ]
+    },
+    {
+      "question_id": "Q2",
+      "judgment": "SUPPORTED",
+      "answer": "The best balance is a thin MV3 side-panel extension plus a local companion reached through Chrome native messaging. The extension presents user-visible Go/Done interaction and transient tab coordination; the companion owns SQLite state, files, hashes, validators, recovery, and native dialogs. This scores 435/500 (87%) in the design matrix, ahead of a loopback-service hybrid at 400/500, extension-only at 290/500, and full browser automation at 145/500. Native messaging avoids a listening local port, pins access to explicit extension origins, and allows file operations to remain outside the fragile Web UI. The baseline has no response-DOM dependency.",
+      "reasoning_summary": "Extension-only storage and service-worker lifecycle are insufficient for durable filesystem-backed project management. A loopback service is viable but adds local network, CSRF/token, CORS, firewall, and port risks. Full RPA is brittle, weakens user control, exposes authentication, and conflicts with current restrictions on programmatic output extraction. Native messaging has installation cost but the strongest trust boundary and recovery/testability profile for Sina's Windows/Chrome environment.",
+      "evidence": [
+        {
+          "source": "Chrome native messaging",
+          "location": "https://developer.chrome.com/docs/extensions/develop/concepts/native-messaging (accessed 2026-07-14)",
+          "support": "Documents exact allowed extension origins, native-host registration, JSON framing, extension-context restrictions, and message-size limits."
+        },
+        {
+          "source": "Chrome extension service-worker lifecycle and chrome.storage",
+          "location": "https://developer.chrome.com/docs/extensions/develop/concepts/service-workers/lifecycle and https://developer.chrome.com/docs/extensions/reference/api/storage (accessed 2026-07-14)",
+          "support": "Documents worker termination/global-state loss and storage quotas, supporting a durable local authority rather than extension-only state."
+        },
+        {
+          "source": "OpenAI Terms of Use",
+          "location": "https://openai.com/policies/terms-of-use/ lines 45–76, effective 2026-01-01 (accessed 2026-07-14)",
+          "support": "Prohibits automatic/programmatic extraction of data or output and bypassing restrictions, and requires evaluation of output."
+        }
+      ],
+      "required_changes": [
+        "Approve native messaging as the default local bridge.",
+        "Keep the extension thin and non-authoritative.",
+        "Reject full authenticated-browser automation and any private ChatGPT endpoint.",
+        "Preserve loopback transport only as a documented fallback architecture."
+      ]
+    },
+    {
+      "question_id": "Q3",
+      "judgment": "SUPPORTED",
+      "answer": "The extension should display the next call, exact outgoing files and hashes, expected outputs, privacy/staleness warnings, Go/Done/recovery controls, and transient tab status. It may open/focus ChatGPT, copy the prompt after a user click, and ask the companion to reveal the frozen request folder or open the response picker. The companion should own package creation, approved-root path access, hashing, SQLite transactions, locks, idempotency, native dialogs, collection, quarantine, schema/artifact validation, event logs, and reconciliation. Codex should own task decomposition, authority, semantic validation, correction decisions, integration, and completion. The user must attach files, use ChatGPT Send, review the answer, download files through normal controls, select files on Done, and make consequential approvals. The extension must not read cookies, scrape the response, use private endpoints, click Send, silently retry, or collect unrelated browsing/download content.",
+      "reasoning_summary": "Least privilege requires browser code to hold as little file/state authority as possible and requires the user to remain the actual service operator. The side panel is well suited to a visible companion UI, while native messaging moves privileged local operations to a tightly registered host. Current Chrome guidance favors optional/minimum permissions and treats content-script messages as untrusted.",
+      "evidence": [
+        {
+          "source": "chatgpt_web_call_assistant_brief(1).txt",
+          "location": "Sections 4–6 and 15, lines 109–331 and 691–729",
+          "support": "Defines Codex, ChatGPT Web, user, Go/Done, visibility, user control, and prohibition on hidden/unrelated collection."
+        },
+        {
+          "source": "Chrome sidePanel, permissions, activeTab, and messaging documentation",
+          "location": "https://developer.chrome.com/docs/extensions/reference/api/sidePanel; https://developer.chrome.com/docs/extensions/develop/concepts/declare-permissions; https://developer.chrome.com/docs/extensions/develop/concepts/activeTab; https://developer.chrome.com/docs/extensions/develop/concepts/messaging (accessed 2026-07-14)",
+          "support": "Supports a user-gesture side-panel UI, minimum/temporary access, and strict validation of untrusted content-script messages."
+        }
+      ],
+      "required_changes": [
+        "Adopt the role-boundary table in the system design as a normative implementation contract.",
+        "Use only sidePanel, nativeMessaging, and non-sensitive storage in the baseline permission budget.",
+        "Require separate approval before any optional ChatGPT page access."
+      ]
+    },
+    {
+      "question_id": "Q4",
+      "judgment": "SUPPORTED",
+      "answer": "Use canonical per-call states DRAFT, PACKAGING, READY, HANDOFF_ACTIVE, optional AWAITING_RESPONSE, COLLECTING, COLLECTED, VALIDATING, NEEDS_CORRECTION, ACCEPTED, INTEGRATING, INTEGRATED, REJECTED, FAILED, CANCELLED, and STALE; model PAUSED as a flag retaining paused_from_state. Every transition must record actor, expected prior state/version, preconditions, idempotency key, atomic side effects, event evidence, result state/version, retry class, and user-visible outcome. SQLite is the transactional operational index, the exchange filesystem is durable byte evidence, CALL_STATE is a materialized view, and EVENTS.jsonl is a portable event mirror. New v3 manifests/contracts add project_id, call_id, lineage, package manifest, canonical request digest, complete file metadata, exact expected outputs, conditional completion, response digest echo, and structured validation reports. Legacy v2 exchanges remain byte-for-byte read-only under a dual validator/importer.",
+      "reasoning_summary": "A state label alone is insufficient; resumability and idempotency require compare-and-swap state versions, unique command keys, per-call locks, transactional events, staged filesystem writes, and deterministic reconciliation. The filesystem and database have complementary roles and must not become silent competing authorities. A new contract version is safer than stretching v2 without reliable conditional semantics.",
+      "evidence": [
+        {
+          "source": "chatgpt_web_call_assistant_brief(1).txt",
+          "location": "Sections 16–17, lines 732–793",
+          "support": "Lists lifecycle concepts and defines project completion requirements."
+        },
+        {
+          "source": "EXAMPLE_EXCHANGE_MANIFEST.json",
+          "location": "Fields request_status, response_status, expected_response_files, and validation",
+          "support": "Demonstrates useful validation evidence but lacks complete transitions, events, lineage, locks, and package binding."
+        },
+        {
+          "source": "SQLite WAL and transaction documentation; RFC 8785",
+          "location": "https://sqlite.org/wal.html; https://sqlite.org/lang_transaction.html; https://www.rfc-editor.org/rfc/rfc8785.html (accessed 2026-07-14)",
+          "support": "Supports transactional durable state and repeatable canonical JSON hashing."
+        }
+      ],
+      "required_changes": [
+        "Implement optimistic state versions, command idempotency, and transactional event records before adding convenience automation.",
+        "Introduce a v3 package/request/response/validation contract with a dual v2/v3 validator.",
+        "Make database reconstruction from filesystem evidence a tested release gate."
+      ]
+    },
+    {
+      "question_id": "Q5",
+      "judgment": "SUPPORTED",
+      "answer": "Reliable collection should begin only after the user reviews ChatGPT's answer and downloads the required files through normal controls. On Done, the local companion opens a visible native multi-file picker; the user selects the exact files. The companion copies them into exchange-local staging, checks stability, hashes and atomically stores them, validates the expected main filename/schema/request ID, checks v3 call ID and request digest when available, cross-checks every artifact manifest entry and hash, and quarantines missing/wrong/partial/ambiguous candidates. It never reads the ChatGPT response DOM, network traffic, cookies, or unrelated downloads. Browser-uniquified filenames are normalized only after content/schema binding and with the original name recorded.",
+      "reasoning_summary": "Explicit user selection provides the strongest protection against collecting unrelated page or download content and avoids the broad Chrome downloads permission. Native selection retains real local paths and supports large files without sending file bytes over the size-limited native-messaging channel. Request ID plus canonical package digest provides strong call association for v3; legacy v2 remains weaker and requires explicit review.",
+      "evidence": [
+        {
+          "source": "OpenAI Terms of Use",
+          "location": "https://openai.com/policies/terms-of-use/ lines 49–55 (accessed 2026-07-14)",
+          "support": "Prohibits automatic/programmatic extraction of data or output and bypassing restrictions."
+        },
+        {
+          "source": "Chrome File System Access API",
+          "location": "https://developer.chrome.com/docs/capabilities/web-apis/file-system-access (accessed 2026-07-14)",
+          "support": "Documents explicit user-gesture file selection and cancellation without access."
+        },
+        {
+          "source": "chrome.downloads and Chrome native messaging",
+          "location": "https://developer.chrome.com/docs/extensions/reference/api/downloads and https://developer.chrome.com/docs/extensions/develop/concepts/native-messaging (accessed 2026-07-14)",
+          "support": "Downloads permission can expose monitoring/search and absolute local paths; native messaging has message-size limits, supporting omission of downloads access and metadata-only messaging."
+        }
+      ],
+      "required_changes": [
+        "Use native user selection for the first release.",
+        "Do not request Chrome downloads permission in the baseline.",
+        "Require v3 responses to echo request_digest and preserve explicit legacy warnings.",
+        "Quarantine rather than overwrite or silently accept ambiguous candidates."
+      ]
+    },
+    {
+      "question_id": "Q6",
+      "judgment": "SUPPORTED",
+      "answer": "Use six distinct gates: request eligibility and immutable package validation; Go disclosure/authorization; user-selected collection; structural response validation; Codex semantic/authority validation; and integration/project-completion validation. A response cannot be Accepted unless request/call/digest identity, schema, exact work/question/artifact ID coverage, artifact files/hashes, source requirements, and acceptance criteria pass. A structurally valid response remains advisory until Codex verifies important claims and conflicts. Missing or incorrect work creates a linked correction/revision call; it never silently advances. Integrated and Project Complete remain separate from Accepted.",
+      "reasoning_summary": "The current schemas provide useful shape validation but lack cross-field and cross-file invariants. Layering deterministic and intellectual checks prevents both malformed packages and plausible but wrong model output from being mistaken for completion. The project requirement graph prevents call count or response presence from becoming a completion proxy.",
+      "evidence": [
+        {
+          "source": "WEB_RESPONSE_SCHEMA(1).json",
+          "location": "Properties status, work_performed, question_responses, artifacts_manifest, provenance, and delivery_contract",
+          "support": "Shows current structured response fields and missing conditional equality/completion constraints."
+        },
+        {
+          "source": "CHATGPT_WEB_PROTOCOL.json",
+          "location": "Workflow steps 10–11 and advisory_rule",
+          "support": "Requires Codex schema/artifact validation, independent checks, and advisory treatment before integration."
+        },
+        {
+          "source": "OpenAI Terms of Use",
+          "location": "https://openai.com/policies/terms-of-use/ lines 70–76 (accessed 2026-07-14)",
+          "support": "States that output may be inaccurate and must be evaluated for the use case, including human review as appropriate."
+        }
+      ],
+      "required_changes": [
+        "Encode conditional COMPLETE rules and exact requested-ID/artifact coverage in v3.",
+        "Keep deterministic structural validation separate from Codex semantic acceptance.",
+        "Require recorded integration and final-audit evidence for project completion."
+      ]
+    },
+    {
+      "question_id": "Q7",
+      "judgment": "SUPPORTED",
+      "answer": "Principal threats are prohibited/fragile browser automation, compromised extension or content-script messages, excessive permissions, local path traversal/reparse points, native-host spoofing/replay, accidental secret upload, cross-call response mix-up, malicious model files/JSON, UI change, worker/browser termination, duplicate/concurrent actions, inaccurate model output, unsuitable ChatGPT retention/training settings, state loss/disk failure, sensitive logs, auth theft, dependency compromise, and stale requests. Mandatory first-use controls include no scraping/private endpoints/cookie access; exact native allowed_origins; minimum extension permissions; strict message schemas; approved filesystem roots and link/path rejection; secret/sensitivity disclosure; request digests and hashes; untrusted-data parsing limits; transactional/idempotent state; metadata-only logs; manual fallback; and explicit user Send/download/Done selection.",
+      "reasoning_summary": "The most dangerous failures are silent: sending undisclosed files, collecting unrelated output, binding the wrong response, accepting unvalidated model work, or advancing state after an ambiguous crash. Controls therefore fail closed and preserve evidence. Residual risk remains from provider changes, model error, local-account compromise, scanner false negatives, and platform vulnerabilities; the design does not claim perfect security.",
+      "evidence": [
+        {
+          "source": "Chrome message passing, permissions, and Web Store user-data guidance",
+          "location": "https://developer.chrome.com/docs/extensions/develop/concepts/messaging; https://developer.chrome.com/docs/extensions/develop/concepts/declare-permissions; https://developer.chrome.com/docs/webstore/program-policies/user-data-faq (accessed 2026-07-14)",
+          "support": "Requires validation of untrusted content-script messages, minimum/optional permissions, and transparent limited user-data handling."
+        },
+        {
+          "source": "OpenAI Data Controls FAQ and Chat/File Retention Policies",
+          "location": "https://help.openai.com/en/articles/7730893-data-controls-faq and https://help.openai.com/en/articles/8983778-chat-and-file-retention-policies-in-chatgpt (accessed 2026-07-14)",
+          "support": "Documents user controls and retention behavior relevant to sensitive request packaging."
+        },
+        {
+          "source": "chatgpt_web_call_assistant_brief(1).txt",
+          "location": "Section 15, lines 691–729",
+          "support": "Requires visibility, intentional action, no hidden/unrelated collection, failure detection, recovery, and traceability."
+        }
+      ],
+      "required_changes": [
+        "Treat the threat model's mandatory controls as Phase 1 release gates.",
+        "Keep telemetry off and logs metadata-only by default.",
+        "Show sensitivity/data-control decisions before Go.",
+        "Re-review OpenAI and Chrome policies before every capability that expands automation or permissions."
+      ]
+    },
+    {
+      "question_id": "Q8",
+      "judgment": "SUPPORTED",
+      "answer": "After a read-only Phase 0 baseline and decision gate, Codex should implement one vertical slice: local SQLite/event core, strict native-messaging bridge, minimal side panel, exact disclosure, idempotent Go, prompt-copy/folder-reveal assistance, manual ChatGPT Send/download, Done-triggered native file selection, v2 response/artifact validation, restart recovery, quarantine, and manual fallback. Expansion requires 100% deterministic state/contract/path/security tests, failure injection at every persistence boundary, mock-browser extension tests, at least one non-sensitive real UAT call, no unresolved critical/major security issue, unchanged legacy fixtures, successful manual fallback, and Sina's explicit acceptance.",
+      "reasoning_summary": "This slice proves both trust boundaries and end-to-end value without depending on v3 contracts, project intelligence, or DOM automation. Building a headless state engine alone would not validate Go/Done usability; building page automation first would increase risk before durable identity/recovery exists. The roadmap therefore places decisions and golden fixtures first, then a minimal complete path, then state/contract hardening, project completion, optional input assist, and distribution.",
+      "evidence": [
+        {
+          "source": "CHATGPT_WEB_CALL_ASSISTANT_IMPLEMENTATION_ROADMAP.md",
+          "location": "Sections 4–7 and 10–13",
+          "support": "Defines Phase 0, the smallest vertical slice, hardening phases, tests, release gates, rollback, and Definition of Done."
+        },
+        {
+          "source": "Playwright Chrome extensions documentation",
+          "location": "https://playwright.dev/docs/chrome-extensions (accessed 2026-07-14)",
+          "support": "Documents persistent Chromium contexts for extension testing and supports a local mock-site test strategy."
+        },
+        {
+          "source": "F1D_AGENTS.md",
+          "location": "GitNexus Always Do / Never Do sections",
+          "support": "Requires impact analysis before symbol edits and detect_changes before commits during later implementation."
+        }
+      ],
+      "required_changes": [
+        "Approve Phase 0 decisions before production edits.",
+        "Do not begin with DOM or output automation.",
+        "Require failure-injection, recovery, permission, and fallback evidence before Phase 2.",
+        "Follow repository GitNexus impact/change-detection rules during implementation."
+      ]
+    },
+    {
+      "question_id": "Q9",
+      "judgment": "SUPPORTED",
+      "answer": "Nine consequential choices remain: (1) safe automation ceiling, with manual Send/download baseline recommended; (2) Done collection, with native user file selection recommended over downloads monitoring; (3) native messaging versus loopback, with native messaging recommended; (4) v3 contracts versus stretching v2, with v3 plus dual validation recommended; (5) per-project exchange root versus universal docs/Defense, with configurable roots and preserved legacy recommended; (6) new chat per call versus reused/project chat, with new chat by default; (7) sensitive-call mode among normal, Temporary Chat, and do-not-send, chosen per call; (8) pilot distribution, beginning with single-user development then signed private release; and (9) local retention/clipboard defaults, with project-defined retention and user-click clipboard writing. Decisions 1–5 are blocking before implementation beyond baseline inventory.",
+      "reasoning_summary": "These decisions materially change permissions, policy exposure, privacy, migration cost, hidden context, installer complexity, and user action count. They cannot be silently converted from design assumptions into product requirements. The recommendation optimizes safety and reversibility first while leaving optional convenience behind explicit later gates.",
+      "evidence": [
+        {
+          "source": "CHATGPT_WEB_CALL_ASSISTANT_SYSTEM_DESIGN.md",
+          "location": "Section 17, Consequential open decisions for Sina",
+          "support": "Provides the prioritized options, recommended defaults, and consequences."
+        },
+        {
+          "source": "chatgpt_web_call_assistant_brief(1).txt",
+          "location": "Lines 8–12, 169, 194–212, 435–445, and 691–729",
+          "support": "Leaves technical choices to Codex while making visibility, user control, few actions, and safety non-negotiable."
+        },
+        {
+          "source": "Current Chrome/OpenAI primary sources",
+          "location": "URLs recorded in the system design Research Evidence Ledger, accessed 2026-07-14",
+          "support": "Establish current permission, user-gesture, native-host, output-extraction, upload-limit, and privacy constraints that make these choices consequential."
+        }
+      ],
+      "required_changes": [
+        "Obtain Sina's explicit decisions on items 1–5 before implementing the vertical slice.",
+        "Resolve decisions 6–9 before enabling their corresponding features.",
+        "Record any override with rationale, scope, expiry/review date, and rollback."
+      ]
+    }
+  ],
+  "findings": [
+    {
+      "priority": 1,
+      "severity": "CRITICAL",
+      "category": "Policy and user-control boundary",
+      "finding": "The upgraded brief's phrase 'gather the response' is ambiguous; current OpenAI Terms prohibit automatic/programmatic extraction of data or output.",
+      "why_it_matters": "A naïve response scraper or private-endpoint integration could violate service rules, collect unrelated content, expose authentication, and make the product unsafe.",
+      "recommended_action": "Keep Send, review, and download as direct user actions; make Done invoke an explicit native file picker; prohibit response DOM/network scraping and private endpoints."
+    },
+    {
+      "priority": 2,
+      "severity": "CRITICAL",
+      "category": "Durable workflow state",
+      "finding": "The current protocol has no authoritative transition model, event log, state version, idempotency key, lock, or crash-recovery semantics.",
+      "why_it_matters": "Duplicate actions, browser restarts, and concurrent projects can create ambiguous or contradictory state and duplicate intellectual calls.",
+      "recommended_action": "Implement SQLite transactions, per-call state/version, idempotent commands, locks, staged filesystem commits, and rebuildable events before convenience automation."
+    },
+    {
+      "priority": 3,
+      "severity": "CRITICAL",
+      "category": "Request-response binding",
+      "finding": "A matching request_id does not bind a response to the exact bytes actually disclosed and uploaded because the current request has no canonical package digest/file hashes.",
+      "why_it_matters": "A valid-looking response may belong to a stale, modified, or different package.",
+      "recommended_action": "Create PACKAGE_MANIFEST.json with per-file hashes and an RFC-8785-canonical request_digest; require v3 responses to echo it."
+    },
+    {
+      "priority": 4,
+      "severity": "CRITICAL",
+      "category": "Whole-project completion",
+      "finding": "The brief defines project completion, but no supplied data model represents requirements, dependencies, accepted evidence, integration, blockers, or final audit.",
+      "why_it_matters": "The system cannot prove that the original objective is complete and may confuse returned calls with completed work.",
+      "recommended_action": "Add project/requirement/evidence/integration/final-audit records and derive completion only from mandatory invariants."
+    },
+    {
+      "priority": 5,
+      "severity": "MAJOR",
+      "category": "Schema integrity",
+      "finding": "Current schemas validate shape but not exact requested-ID coverage, conditional COMPLETE semantics, artifact hash presence, direct Web-source metadata, or strong provenance.",
+      "why_it_matters": "A schema-valid response can still omit required work/artifacts or make unverifiable self-assertions.",
+      "recommended_action": "Introduce v3 conditional contracts and independent cross-file validation while retaining v2 validators for legacy exchanges."
+    },
+    {
+      "priority": 6,
+      "severity": "MAJOR",
+      "category": "Universal scope and concurrency",
+      "finding": "The universal gate is hard-coded under docs/Defense and the protocol exposes one active_request slot.",
+      "why_it_matters": "Non-defense projects and multiple ready/paused calls cannot be represented safely.",
+      "recommended_action": "Use configurable per-project exchange roots and queryable per-call records; preserve the historical defense path read-only."
+    },
+    {
+      "priority": 7,
+      "severity": "MAJOR",
+      "category": "Least privilege",
+      "finding": "An extension that monitors all downloads or has persistent ChatGPT/all-sites access would exceed the safe baseline and increase compromise impact.",
+      "why_it_matters": "Downloads metadata can include absolute local paths and broad page access can expose unrelated browsing data.",
+      "recommended_action": "Limit baseline permissions to sidePanel, nativeMessaging, and preference storage; use a native user picker and gate any optional page access separately."
+    },
+    {
+      "priority": 8,
+      "severity": "MAJOR",
+      "category": "Privacy and secrets",
+      "finding": "The current package contract has no sensitivity classification, secret scan, explicit override, data-control reminder, or retention decision.",
+      "why_it_matters": "Sensitive files or credentials can be sent without a deliberate privacy decision, and local/provider retention may be unsuitable.",
+      "recommended_action": "Add secret/sensitivity preflight, exact disclosure, explicit override evidence, chat-mode/data-control notice, metadata-only logs, and project-defined local retention."
+    },
+    {
+      "priority": 9,
+      "severity": "MAJOR",
+      "category": "Filename and artifact association",
+      "finding": "Transport and browser duplicate suffixes can change filenames, and the current contract does not record original versus normalized names.",
+      "why_it_matters": "Manual renaming can attach the wrong file or break artifact accounting.",
+      "recommended_action": "Bind by call/digest/schema/hash, record both names, normalize only after unambiguous validation, and quarantine conflicts."
+    },
+    {
+      "priority": 10,
+      "severity": "MAJOR",
+      "category": "Implementation and verification",
+      "finding": "No extension, companion, installer, compatibility probe, mocked browser surface, failure injection, or recovery test currently exists.",
+      "why_it_matters": "The desired Go/Done behavior and reliability remain unproven.",
+      "recommended_action": "Build the Phase 1 vertical slice only after the decision/baseline phase, and require deterministic, failure-injection, mock-browser, real UAT, and manual-fallback evidence."
+    },
+    {
+      "priority": 11,
+      "severity": "MAJOR",
+      "category": "Model trust",
+      "finding": "Schema validity and artifact presence cannot establish intellectual correctness.",
+      "why_it_matters": "A well-formed output can invent facts, conflict with authority, or answer the wrong question.",
+      "recommended_action": "Keep Codex semantic/authority validation, critic/revision workflows, and user acceptance separate from deterministic validation."
+    },
+    {
+      "priority": 12,
+      "severity": "MINOR",
+      "category": "Operational observability",
+      "finding": "The current example records useful hashes and timestamps but no standardized event/failure taxonomy or content-minimizing diagnostic contract.",
+      "why_it_matters": "Recovery and support can become guesswork or leak sensitive prompt/output content.",
+      "recommended_action": "Adopt metadata-only structured events, health checks, validator versions, failure codes, redaction, and local-only metrics."
+    }
+  ],
+  "recommendations": [
+    "Approve the thin MV3 side-panel plus native-messaging local companion as the target architecture.",
+    "Interpret Go as visible authorization and preparation, not hidden Send; keep ChatGPT's native Send under direct user control.",
+    "Implement Done as explicit native file selection after the user downloads files normally; do not scrape the response page or monitor unrelated downloads.",
+    "Make the companion the durable authority using SQLite transactions plus immutable exchange evidence; keep the extension non-authoritative.",
+    "Freeze each request with a complete package manifest and canonical request digest, and require v3 response binding to that digest.",
+    "Introduce v3 request/response/manifest/validation contracts for new calls while preserving v2 exchanges byte-for-byte and validating both versions.",
+    "Represent project requirements, call dependencies, acceptance, integration, blockers, final audit, and user approval so project completion is provable.",
+    "Adopt the baseline permission budget with no downloads, cookies, debugger, all-sites, persistent ChatGPT host, or content-script access.",
+    "Implement Phase 0 and the Phase 1 vertical slice before any optional ChatGPT composer assistance.",
+    "Keep the manual protocol available at every phase and roll back immediately on silent send/collection, wrong-call acceptance, state irreconcilability, or policy conflict.",
+    "Require Sina's explicit approval of the decision register before implementation beyond read-only baseline work.",
+    "Re-check current OpenAI terms, ChatGPT limits/data controls, Chrome APIs, and extension policies before each release that expands permissions or automation."
+  ],
+  "sources_consulted": [
+    {
+      "source": "chatgpt_web_call_assistant_brief(1).txt",
+      "source_type": "UPLOADED_FILE",
+      "purpose": "Read completely as the primary product intent, user-experience, safety, reliability, call-type, and whole-project completion authority."
+    },
+    {
+      "source": "F1D_AGENTS.md",
+      "source_type": "UPLOADED_FILE",
+      "purpose": "Read completely for the universal Web reasoning gate, manual exchange requirements, advisory role, and future GitNexus implementation rules."
+    },
+    {
+      "source": "CHATGPT_WEB_PROTOCOL.json",
+      "source_type": "UPLOADED_FILE",
+      "purpose": "Read completely as the current authoritative manual protocol, directory contract, workflow, delivery rules, and active-request state."
+    },
+    {
+      "source": "WEB_REQUEST_SCHEMA(1).json",
+      "source_type": "UPLOADED_FILE",
+      "purpose": "Read completely to audit the current request contract, validation strengths, and missing integrity/state fields."
+    },
+    {
+      "source": "WEB_RESPONSE_SCHEMA(1).json",
+      "source_type": "UPLOADED_FILE",
+      "purpose": "Read completely as the mandatory main-response schema and to identify conditional-completion, binding, artifact, source, and provenance gaps."
+    },
+    {
+      "source": "EXAMPLE_EXCHANGE_MANIFEST.json",
+      "source_type": "UPLOADED_FILE",
+      "purpose": "Read completely as evidence of one validated operational exchange and its hashes/statuses."
+    },
+    {
+      "source": "EXAMPLE_WEB_REVIEW_REQUEST.json",
+      "source_type": "UPLOADED_FILE",
+      "purpose": "Read completely to distinguish demonstrated request practice from universal product requirements."
+    },
+    {
+      "source": "EXAMPLE_WEB_RESPONSE.json",
+      "source_type": "UPLOADED_FILE",
+      "purpose": "Read completely to audit demonstrated work/question/artifact/source/validation response practice without treating thesis content as product requirements."
+    },
+    {
+      "source": "PASTE_THIS_PROMPT(1).txt",
+      "source_type": "UPLOADED_FILE",
+      "purpose": "Read completely for the governing file-only delivery, schema, artifact, failure, and chat-silence instructions."
+    },
+    {
+      "source": "WEB_REVIEW_REQUEST(1).json",
+      "source_type": "UPLOADED_FILE",
+      "purpose": "Read completely as the governing objective, scope, authority, research permission, W1–W5 work, Q1–Q9 questions, artifact contract, and stop condition."
+    },
+    {
+      "source": "OpenAI — Terms of Use — https://openai.com/policies/terms-of-use/",
+      "source_type": "WEB",
+      "purpose": "Accessed 2026-07-14; verified the effective date, prohibition on automatic/programmatic extraction of data or output and circumvention, and requirement to evaluate output."
+    },
+    {
+      "source": "OpenAI Help Center — File Uploads FAQ — https://help.openai.com/en/articles/8555545-file-uploads-faq",
+      "source_type": "WEB",
+      "purpose": "Accessed 2026-07-14; verified current file-size/token/type and rolling upload-limit constraints and their variability."
+    },
+    {
+      "source": "OpenAI Help Center — Data Controls FAQ — https://help.openai.com/en/articles/7730893-data-controls-faq",
+      "source_type": "WEB",
+      "purpose": "Accessed 2026-07-14; verified user controls for whether conversations improve models."
+    },
+    {
+      "source": "OpenAI Help Center — Chat and File Retention Policies in ChatGPT — https://help.openai.com/en/articles/8983778-chat-and-file-retention-policies-in-chatgpt",
+      "source_type": "WEB",
+      "purpose": "Accessed 2026-07-14; verified chat/file retention and deletion behavior relevant to sensitive call design."
+    },
+    {
+      "source": "Chrome for Developers — Native messaging — https://developer.chrome.com/docs/extensions/develop/concepts/native-messaging",
+      "source_type": "WEB",
+      "purpose": "Accessed 2026-07-14; verified exact allowed origins, OS registration, extension-context restrictions, JSON framing, process behavior, and message-size limits."
+    },
+    {
+      "source": "Chrome for Developers — The extension service worker lifecycle — https://developer.chrome.com/docs/extensions/develop/concepts/service-workers/lifecycle",
+      "source_type": "WEB",
+      "purpose": "Accessed 2026-07-14; verified worker termination and the requirement to persist state rather than rely on globals."
+    },
+    {
+      "source": "Chrome for Developers — chrome.storage — https://developer.chrome.com/docs/extensions/reference/api/storage",
+      "source_type": "WEB",
+      "purpose": "Accessed 2026-07-14; verified storage persistence, access levels, quotas, and lifecycle limitations."
+    },
+    {
+      "source": "Chrome for Developers — chrome.sidePanel — https://developer.chrome.com/docs/extensions/reference/api/sidePanel",
+      "source_type": "WEB",
+      "purpose": "Accessed 2026-07-14; verified side-panel availability, tab scoping, and user-interaction opening behavior."
+    },
+    {
+      "source": "Chrome for Developers — chrome.tabs — https://developer.chrome.com/docs/extensions/reference/api/tabs",
+      "source_type": "WEB",
+      "purpose": "Accessed 2026-07-14; verified tab creation without broad permission, sensitive tab properties, and session-scoped tab identity."
+    },
+    {
+      "source": "Chrome for Developers — The activeTab permission — https://developer.chrome.com/docs/extensions/develop/concepts/activeTab",
+      "source_type": "WEB",
+      "purpose": "Accessed 2026-07-14; verified temporary page access following explicit user invocation."
+    },
+    {
+      "source": "Chrome for Developers — Content scripts — https://developer.chrome.com/docs/extensions/develop/concepts/content-scripts",
+      "source_type": "WEB",
+      "purpose": "Accessed 2026-07-14; verified DOM capabilities, isolated worlds, and limited direct extension API access."
+    },
+    {
+      "source": "Chrome for Developers — Message passing — https://developer.chrome.com/docs/extensions/develop/concepts/messaging",
+      "source_type": "WEB",
+      "purpose": "Accessed 2026-07-14; verified native/content messaging and the requirement to treat content-script messages/data as untrusted."
+    },
+    {
+      "source": "Chrome for Developers — Declare permissions — https://developer.chrome.com/docs/extensions/develop/concepts/declare-permissions",
+      "source_type": "WEB",
+      "purpose": "Accessed 2026-07-14; verified minimum and optional permission guidance."
+    },
+    {
+      "source": "Chrome for Developers — chrome.downloads — https://developer.chrome.com/docs/extensions/reference/api/downloads",
+      "source_type": "WEB",
+      "purpose": "Accessed 2026-07-14; verified downloads permission, monitoring/search capabilities, persistent IDs, states, and absolute local filename exposure; used to justify omission from baseline."
+    },
+    {
+      "source": "Chrome for Developers — Stay secure — https://developer.chrome.com/docs/extensions/develop/security-privacy/stay-secure",
+      "source_type": "WEB",
+      "purpose": "Accessed 2026-07-14; verified minimum-permission and extension-security guidance."
+    },
+    {
+      "source": "Chrome Web Store — Updated Privacy Policy & Secure Handling Requirements — https://developer.chrome.com/docs/webstore/program-policies/user-data-faq",
+      "source_type": "WEB",
+      "purpose": "Accessed 2026-07-14; verified narrowest-permission, transparency, limited-use, and secure-handling requirements."
+    },
+    {
+      "source": "Chrome for Developers — The File System Access API — https://developer.chrome.com/docs/capabilities/web-apis/file-system-access",
+      "source_type": "WEB",
+      "purpose": "Accessed 2026-07-14; verified user-gesture file selection and cancellation without access; used as the collection-consent pattern."
+    },
+    {
+      "source": "SQLite — Write-Ahead Logging and Transactions — https://sqlite.org/wal.html and https://sqlite.org/lang_transaction.html",
+      "source_type": "WEB",
+      "purpose": "Accessed 2026-07-14; verified transactional atomicity and WAL commit/recovery behavior supporting the local state design."
+    },
+    {
+      "source": "JSON Schema — Specification — https://json-schema.org/specification",
+      "source_type": "WEB",
+      "purpose": "Accessed 2026-07-14; verified Draft 2020-12 as the current published validation dialect used by the supplied schemas."
+    },
+    {
+      "source": "RFC Editor — RFC 8785 JSON Canonicalization Scheme — https://www.rfc-editor.org/rfc/rfc8785.html",
+      "source_type": "WEB",
+      "purpose": "Accessed 2026-07-14; verified deterministic JSON canonicalization for repeatable package hashing."
+    },
+    {
+      "source": "Playwright — Chrome extensions — https://playwright.dev/docs/chrome-extensions",
+      "source_type": "WEB",
+      "purpose": "Accessed 2026-07-14; verified persistent Chromium-context requirements and constraints for extension integration testing."
+    }
+  ],
+  "artifacts_manifest": [
+    {
+      "artifact_id": "A1",
+      "filename": "CHATGPT_WEB_CALL_ASSISTANT_SYSTEM_DESIGN.md",
+      "media_type": "text/markdown",
+      "purpose": "Authoritative candidate design for Sina and Codex, covering current-state audit, traceability, architecture alternatives, recommended boundaries, lifecycle, state machine, data contracts, migration, validation, security/privacy, recovery, observability, research evidence, and open decisions.",
+      "status": "CREATED",
+      "sha256": "f2c8ece0092d0b7873c218534bf5b924e5a52a0b701e14712f5425777ded1e36",
+      "validation_summary": "Created and inspected as an 827-line, 8,895-word Markdown artifact. It contains every required A1 section, uses normative MUST/SHOULD/MAY language, separates documented facts/recommendations/assumptions/open decisions, includes an explicit weighted four-architecture matrix, records direct current-source URLs and access date, and makes no claim that implementation occurred."
+    },
+    {
+      "artifact_id": "A2",
+      "filename": "CHATGPT_WEB_CALL_ASSISTANT_IMPLEMENTATION_ROADMAP.md",
+      "media_type": "text/markdown",
+      "purpose": "Dependency-ordered implementation and verification roadmap for later Codex execution, beginning with a smallest coherent vertical slice and preserving the manual protocol as fallback.",
+      "status": "CREATED",
+      "sha256": "6a4e89da453416d2e70746218986f1bdb757e4f38116016783a6fae2611fc335",
+      "validation_summary": "Created and inspected as a 661-line, 4,552-word Markdown artifact. Every phase states objective, inputs/scope, components, prerequisites, risks, automated/manual tests, acceptance evidence, exit criteria, rollback, and deferred work; it includes unit/contract/extension/integration/failure-injection/UAT coverage, release gates, rollback criteria, and an explicit no-implementation claim."
+    }
+  ],
+  "limitations": [
+    "This response is an architecture and implementation-planning review only; no repository code, Chrome extension, native host, installer, state database, or executable system was created or tested.",
+    "The actual F1D repository and its complete exchange history were not included; migration details are based on the supplied protocol, schemas, instructions, and one operational example and must be verified read-only in Phase 0.",
+    "No automated or live browser interaction with Sina's authenticated ChatGPT account was performed. Exact current UI details, native picker focus behavior, prompt-copy behavior, and supported ChatGPT destination flow require a non-sensitive manual prototype.",
+    "Current OpenAI Terms were interpreted conservatively to prohibit response DOM/network extraction; this is an architectural risk judgment, not legal advice. Policies can change and must be re-reviewed before release.",
+    "ChatGPT upload limits, plan behavior, UI, Chrome APIs, and extension policies are time-sensitive. Web claims were verified on 2026-07-14 and may require later refresh.",
+    "Hashes provide byte-integrity evidence, not author authentication or protection against a fully compromised local account.",
+    "Secret scanning, schema validation, hashing, and model review reduce but cannot eliminate sensitive-data leakage, malicious-file risk, or intellectual error.",
+    "The recommended first slice intentionally retains several manual actions—attachment, native Send, review, download, and file selection—to preserve user control and avoid unsupported output automation.",
+    "Sina has not yet approved the candidate architecture or the consequential decision register; implementation should not proceed beyond Phase 0 baseline work until the blocking decisions are recorded."
+  ],
+  "next_actions": [
+    "Validate this main JSON against WEB_RESPONSE_SCHEMA(1).json and verify both artifact SHA-256 values before adoption.",
+    "Review the system design's executive decision, automation boundary, and decision register; record Sina's approve/revise/reject decision for items 1–5.",
+    "If approved, begin Phase 0 only: inspect the actual repository read-only, follow F1D GitNexus instructions, inventory legacy exchanges and hashes, select golden fixtures, and pin the implementation toolchain.",
+    "Do not implement ChatGPT DOM response scraping, private endpoints, cookie/session access, automatic Send, or downloads monitoring in the baseline.",
+    "After Phase 0 approval, implement and verify the Phase 1 Go/manual-Send/manual-download/Done-native-picker vertical slice with the manual protocol preserved.",
+    "Re-check official OpenAI and Chrome sources immediately before any release or optional input-assist phase."
+  ],
+  "provenance": {
+    "response_origin": "CHATGPT_WEB_DOWNLOAD",
+    "generated_by_chatgpt_web": true
+  },
+  "delivery_contract": {
+    "main_json_filename": "2026-07-14_web_call_assistant_design_review.json",
+    "chat_text_emitted": false,
+    "attached_files": [
+      "2026-07-14_web_call_assistant_design_review.json",
+      "CHATGPT_WEB_CALL_ASSISTANT_SYSTEM_DESIGN.md",
+      "CHATGPT_WEB_CALL_ASSISTANT_IMPLEMENTATION_ROADMAP.md"
+    ],
+    "all_requested_artifacts_accounted_for": true
+  }
+}
