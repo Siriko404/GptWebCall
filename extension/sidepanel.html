@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>GPT Web Call</title>
+    <link rel="stylesheet" href="sidepanel.css">
+  </head>
+  <body>
+    <main>
+      <header>
+        <p class="eyebrow">GPT WEB CALL</p>
+        <h1>One call at a time</h1>
+        <p class="subtitle">You control Attach, Send, downloads, and Done.</p>
+      </header>
+
+      <section class="card">
+        <label for="call-select">Prepared call</label>
+        <select id="call-select"></select>
+        <div id="call-summary" class="summary"></div>
+        <button id="go-button" class="primary" type="button">Go</button>
+      </section>
+
+      <section class="card">
+        <h2>Status</h2>
+        <p id="status" class="status">Connecting to the local companion…</p>
+        <ul id="attachments" class="file-list"></ul>
+        <button id="stop-button" class="secondary" type="button" hidden>Stop call</button>
+      </section>
+    </main>
+    <script type="module" src="sidepanel.js"></script>
+  </body>
+</html>

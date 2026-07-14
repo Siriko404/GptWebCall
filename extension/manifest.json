@@ -1,0 +1,24 @@
+{
+  "manifest_version": 3,
+  "name": "GPT Web Call",
+  "version": "0.1.0",
+  "description": "User-controlled ChatGPT Web file handoff and response collection.",
+  "minimum_chrome_version": "125",
+  "permissions": [
+    "sidePanel",
+    "nativeMessaging",
+    "debugger",
+    "downloads",
+    "storage"
+  ],
+  "background": {
+    "service_worker": "service_worker.js",
+    "type": "module"
+  },
+  "action": {
+    "default_title": "GPT Web Call"
+  },
+  "side_panel": {
+    "default_path": "sidepanel.html"
+  }
+}
