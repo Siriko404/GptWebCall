@@ -1,0 +1,11 @@
+/bin/
+/data/
+/extension/dist/
+/coverage/
+*.coverprofile
+*.tmp
+*.log
+.idea/
+.vscode/
+Thumbs.db
+.DS_Store
