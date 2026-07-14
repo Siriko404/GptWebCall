@@ -3,6 +3,7 @@ const summary = document.querySelector("#call-summary");
 const status = document.querySelector("#status");
 const attachments = document.querySelector("#attachments");
 const goButton = document.querySelector("#go-button");
+const resumeButton = document.querySelector("#resume-button");
 const doneButton = document.querySelector("#done-button");
 const stopButton = document.querySelector("#stop-button");
 const validationReport = document.querySelector("#validation-report");
@@ -48,6 +49,19 @@ doneButton.addEventListener("click", async () => {
 });
 
 
+resumeButton.addEventListener("click", async () => {
+  setBusy(true);
+  try {
+    const handoff = await send({ type: "RESUME" });
+    renderHandoff(handoff);
+  } catch (error) {
+    status.textContent = error.message;
+  } finally {
+    setBusy(false);
+  }
+});
+
+
 select.addEventListener("change", () => {
   const call = select.selectedOptions[0]?.call;
   summary.textContent = call
@@ -73,11 +87,13 @@ async function refresh() {
       status.textContent = "A call is active. Stop it or resume after reopening Chrome.";
       stopButton.hidden = false;
       doneButton.hidden = false;
+      resumeButton.hidden = false;
       goButton.disabled = true;
     } else {
       status.textContent = "Ready.";
       stopButton.hidden = true;
       doneButton.hidden = true;
+      resumeButton.hidden = true;
     }
     renderReport(state.lastReport);
   } catch (error) {
@@ -111,6 +127,7 @@ function renderHandoff(handoff) {
   }
   goButton.disabled = true;
   doneButton.hidden = false;
+  resumeButton.hidden = true;
   stopButton.hidden = false;
 }
 
@@ -139,6 +156,7 @@ function setBusy(busy) {
   goButton.disabled = busy || select.options.length === 0;
   stopButton.disabled = busy;
   doneButton.disabled = busy;
+  resumeButton.disabled = busy;
 }
 
 

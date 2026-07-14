@@ -81,6 +81,7 @@ class NativeHostTests(unittest.TestCase):
                 "calls.list_ready",
                 "call.active",
                 "call.go",
+                "call.resume",
                 "download.completed",
                 "call.done",
                 "call.stop",
@@ -138,6 +139,31 @@ class NativeHostTests(unittest.TestCase):
 
         self.assertEqual(first, second)
         self.assertEqual(first["status"], "INCOMPLETE")
+
+    def test_call_resume_returns_the_same_approved_request_paths(self):
+        original = dispatch(
+            self.root,
+            self.message(
+                "call.go",
+                {
+                    "exchange_id": self.manifest["exchange_id"],
+                    "tab_id": 42,
+                    "download_baseline": [1],
+                },
+            ),
+        )
+
+        resumed = dispatch(
+            self.root,
+            self.message(
+                "call.resume",
+                {"tab_id": 77, "download_baseline": [1, 2]},
+            ),
+        )
+
+        self.assertEqual(resumed["active"]["tab_id"], 77)
+        self.assertEqual(resumed["active"]["exchange_id"], self.manifest["exchange_id"])
+        self.assertEqual(resumed["request_paths"], original["request_paths"])
 
 
 if __name__ == "__main__":

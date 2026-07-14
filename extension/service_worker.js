@@ -62,6 +62,8 @@ async function handlePanelMessage(message) {
       return getStatus();
     case "GO":
       return beginGo(message.exchangeId);
+    case "RESUME":
+      return resumeActiveCall();
     case "STOP":
       return stopActiveCall();
     case "DONE":
@@ -140,6 +142,54 @@ async function beginGo(exchangeId) {
     if (started) {
       await nativeCommand("call.stop").catch(() => undefined);
     }
+    throw error;
+  }
+}
+
+
+async function resumeActiveCall() {
+  const tab = await chrome.tabs.create({ url: CHATGPT_URL, active: true });
+  if (!Number.isInteger(tab.id)) {
+    throw new Error("Chrome did not create a usable ChatGPT tab");
+  }
+  const existingDownloads = await chrome.downloads.search({});
+  try {
+    const result = await nativeCommand("call.resume", {
+      tab_id: tab.id,
+      download_baseline: existingDownloads.map((item) => item.id),
+    });
+    const handoff = {
+      armed: true,
+      tabId: tab.id,
+      exchangeId: result.active.exchange_id,
+      requestPaths: result.request_paths,
+      attachmentNames: attachmentBasenames(result.request_paths),
+      status: "WAITING_FOR_ATTACH_CLICK",
+      message: "Resumed. Click Attach files in ChatGPT.",
+      monitoring: true,
+      monitoringStartedAt: result.active.started_at,
+      downloadBaseline: result.active.download_baseline,
+      observedDownloadIds: result.active.observed_download_ids,
+    };
+    await chrome.storage.session.set({
+      handoff,
+      downloadTracker: { ids: [], processing: [] },
+    });
+    await chrome.debugger.attach({ tabId: tab.id }, "1.3");
+    await chrome.debugger.sendCommand(
+      { tabId: tab.id },
+      "Page.enable",
+      { enableFileChooserOpenedEvent: true },
+    );
+    await chrome.debugger.sendCommand(
+      { tabId: tab.id },
+      "Page.setInterceptFileChooserDialog",
+      { enabled: true },
+    );
+    return handoff;
+  } catch (error) {
+    await chrome.storage.session.remove(["handoff", "downloadTracker"]);
+    await safeDetach(tab.id);
     throw error;
   }
 }

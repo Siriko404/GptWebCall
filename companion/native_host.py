@@ -12,6 +12,7 @@ from companion.core import (
     list_ready_calls,
     load_active_call,
     request_paths,
+    resume_call,
     start_call,
     stop_call,
 )
@@ -24,6 +25,7 @@ ALLOWED_COMMANDS = {
     "calls.list_ready",
     "call.active",
     "call.go",
+    "call.resume",
     "download.completed",
     "call.done",
     "call.stop",
@@ -96,6 +98,17 @@ def dispatch(root: Path, message: dict[str, Any]) -> dict[str, Any] | list[Any] 
         return {
             "active": active,
             "request_paths": request_paths(root, exchange_id),
+        }
+    if command == "call.resume":
+        _require_keys(payload, {"tab_id", "download_baseline"})
+        active = resume_call(
+            root,
+            _required_integer(payload, "tab_id"),
+            _integer_list(payload, "download_baseline"),
+        )
+        return {
+            "active": active,
+            "request_paths": request_paths(root, active["exchange_id"]),
         }
     if command == "download.completed":
         allowed = {

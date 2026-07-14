@@ -9,6 +9,7 @@ from companion.core import (
     list_ready_calls,
     load_active_call,
     prepare_call,
+    resume_call,
     start_call,
     stop_call,
 )
@@ -176,6 +177,22 @@ class CoreTests(unittest.TestCase):
             .read_text(encoding="utf-8")
         )
         self.assertEqual(manifest["state"], "STOPPED")
+
+    def test_resume_call_rebinds_the_active_exchange_without_resending(self):
+        call = prepare_call(self.root, self.spec(), self.now)
+        active = start_call(self.root, call["exchange_id"], 11, [1, 2])
+        active["observed_download_ids"] = [3]
+        (self.root / "state" / "ACTIVE_CALL.json").write_text(
+            json.dumps(active) + "\n", encoding="utf-8"
+        )
+
+        resumed = resume_call(self.root, 22, [1, 2, 3, 4])
+
+        self.assertEqual(resumed["tab_id"], 22)
+        self.assertEqual(resumed["download_baseline"], [1, 2, 3, 4])
+        self.assertEqual(resumed["observed_download_ids"], [3])
+        self.assertTrue(resumed["monitoring"])
+        self.assertEqual(resumed["exchange_id"], call["exchange_id"])
 
 
 if __name__ == "__main__":

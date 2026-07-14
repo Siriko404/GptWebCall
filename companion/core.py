@@ -196,6 +196,30 @@ def load_active_call(root: Path) -> dict[str, Any] | None:
     return _read_json_object(path, "ACTIVE_CALL")
 
 
+def resume_call(
+    root: Path,
+    tab_id: int,
+    download_baseline: list[int],
+) -> dict[str, Any]:
+    root = Path(root).resolve()
+    active = load_active_call(root)
+    if active is None:
+        raise RuntimeError("no call is active")
+    if not isinstance(tab_id, int) or isinstance(tab_id, bool) or tab_id < 0:
+        raise ValueError("tab_id must be a non-negative integer")
+    if not isinstance(download_baseline, list) or any(
+        not isinstance(item, int) or isinstance(item, bool) or item < 0
+        for item in download_baseline
+    ):
+        raise ValueError("download_baseline must contain non-negative integers")
+    active["tab_id"] = tab_id
+    active["started_at"] = datetime.now(timezone.utc).isoformat()
+    active["monitoring"] = True
+    active["download_baseline"] = sorted(set(download_baseline))
+    _write_json_atomic(_active_path(root), active)
+    return active
+
+
 def stop_call(root: Path) -> dict[str, Any]:
     root = Path(root).resolve()
     active = load_active_call(root)
