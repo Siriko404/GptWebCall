@@ -1,0 +1,144 @@
+import io
+import json
+import tempfile
+import unittest
+from datetime import datetime, timezone
+from pathlib import Path
+
+from companion.core import prepare_call
+from companion.native_host import (
+    ALLOWED_COMMANDS,
+    dispatch,
+    read_message,
+    write_message,
+)
+
+
+class NativeHostTests(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        base = Path(self.temp.name)
+        self.root = base / "GptWebCall"
+        sources = base / "sources"
+        sources.mkdir()
+        request = sources / "WEB_REVIEW_REQUEST.json"
+        request.write_text('{"request_id":"request_native"}\n', encoding="utf-8")
+        schema = sources / "WEB_RESPONSE_SCHEMA.json"
+        schema.write_text('{"type":"object"}\n', encoding="utf-8")
+        self.manifest = prepare_call(
+            self.root,
+            {
+                "subject": "Native fixture",
+                "request_id": "request_native",
+                "expected_main_json": "native_result.json",
+                "prompt_text": "Return files only.\n",
+                "input_files": [
+                    {"path": str(request), "filename": request.name},
+                    {"path": str(schema), "filename": schema.name},
+                ],
+            },
+            datetime(2026, 7, 14, 19, 30, tzinfo=timezone.utc),
+        )
+
+    def tearDown(self):
+        self.temp.cleanup()
+
+    def message(self, command, payload=None):
+        return {
+            "protocol_version": 1,
+            "command": command,
+            "payload": payload or {},
+        }
+
+    def test_message_framing_round_trip(self):
+        stream = io.BytesIO()
+        value = {"protocol_version": 1, "command": "health", "payload": {}}
+
+        write_message(stream, value)
+        stream.seek(0)
+
+        self.assertEqual(read_message(stream), value)
+
+    def test_read_message_returns_none_at_clean_eof(self):
+        self.assertIsNone(read_message(io.BytesIO()))
+
+    def test_read_message_rejects_truncated_header_and_body(self):
+        with self.assertRaisesRegex(ValueError, "header"):
+            read_message(io.BytesIO(b"\x05\x00"))
+        with self.assertRaisesRegex(ValueError, "body"):
+            read_message(io.BytesIO((5).to_bytes(4, "little") + b"{}"))
+
+    def test_read_message_rejects_oversized_frame(self):
+        oversized = (1024 * 1024 + 1).to_bytes(4, "little")
+        with self.assertRaisesRegex(ValueError, "too large"):
+            read_message(io.BytesIO(oversized))
+
+    def test_command_allowlist_is_exact(self):
+        self.assertEqual(
+            ALLOWED_COMMANDS,
+            {
+                "health",
+                "calls.list_ready",
+                "call.active",
+                "call.go",
+                "download.completed",
+                "call.done",
+                "call.stop",
+            },
+        )
+
+    def test_dispatch_rejects_unknown_version_command_and_payload(self):
+        with self.assertRaisesRegex(ValueError, "protocol_version"):
+            dispatch(
+                self.root,
+                {"protocol_version": 2, "command": "health", "payload": {}},
+            )
+        with self.assertRaisesRegex(ValueError, "unknown command"):
+            dispatch(self.root, self.message("shell.execute"))
+        with self.assertRaisesRegex(ValueError, "payload"):
+            dispatch(
+                self.root,
+                {"protocol_version": 1, "command": "health", "payload": []},
+            )
+
+    def test_call_go_returns_only_manifest_approved_request_paths(self):
+        result = dispatch(
+            self.root,
+            self.message(
+                "call.go",
+                {
+                    "exchange_id": self.manifest["exchange_id"],
+                    "tab_id": 42,
+                    "download_baseline": [1, 3],
+                },
+            ),
+        )
+
+        self.assertEqual(result["active"]["tab_id"], 42)
+        self.assertEqual(len(result["request_paths"]), 3)
+        self.assertTrue(
+            all(Path(path).parent.name == "request" for path in result["request_paths"])
+        )
+
+    def test_done_is_idempotent_after_active_state_is_cleared(self):
+        dispatch(
+            self.root,
+            self.message(
+                "call.go",
+                {
+                    "exchange_id": self.manifest["exchange_id"],
+                    "tab_id": 42,
+                    "download_baseline": [],
+                },
+            ),
+        )
+
+        first = dispatch(self.root, self.message("call.done"))
+        second = dispatch(self.root, self.message("call.done"))
+
+        self.assertEqual(first, second)
+        self.assertEqual(first["status"], "INCOMPLETE")
+
+
+if __name__ == "__main__":
+    unittest.main()
