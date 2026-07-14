@@ -39,7 +39,7 @@
 - Produces: `paths.PromptFilename(time.Time) string`
 - Produces: `paths.SafeSlug(string) (string, error)`
 
-- [ ] **Step 1: Create the module metadata and ignore generated state**
+- [x] **Step 1: Create the module metadata and ignore generated state**
 
 ```text
 module github.com/Siriko404/GptWebCall
@@ -49,7 +49,7 @@ go 1.24.0
 
 `.gitignore` must ignore `/bin/`, `/data/`, `/extension/dist/`, coverage output, temporary files, and local editor state while keeping schemas, tests, docs, and fixtures tracked.
 
-- [ ] **Step 2: Write failing path-contract tests**
+- [x] **Step 2: Write failing path-contract tests**
 
 ```go
 func TestExchangeAndPromptShareExactTimestamp(t *testing.T) {
@@ -67,16 +67,16 @@ func TestSafeSlugRejectsTraversalAndReservedNames(t *testing.T) {
 }
 ```
 
-- [ ] **Step 3: Run the path tests and verify RED**
+- [x] **Step 3: Run the path tests and verify RED**
 
 Run: `go test ./internal/paths -run 'TestExchange|TestSafeSlug' -v`
 Expected: compile failure because `ExchangeName`, `PromptFilename`, and `SafeSlug` do not exist.
 
-- [ ] **Step 4: Implement the minimum path contract**
+- [x] **Step 4: Implement the minimum path contract**
 
 Implement timestamp formatting with `2006-01-02_150405`, lowercase ASCII snake-case slugs, Windows reserved-name rejection, traversal/separator rejection, and layout paths rooted under `data/projects/<project_id>/calls`.
 
-- [ ] **Step 5: Verify GREEN and commit**
+- [x] **Step 5: Verify GREEN and commit**
 
 Run: `go test ./internal/paths -v`
 Expected: PASS.
@@ -105,7 +105,7 @@ git commit -m "feat(core): define canonical global layout"
 - Produces: `store.AcquireWriterLock(ctx context.Context, lockPath string, metadata LockMetadata) (*WriterLock, error)`
 - Produces: `(*WriterLock).Release() error`
 
-- [ ] **Step 1: Write failing atomicity and event tests**
+- [x] **Step 1: Write failing atomicity and event tests**
 
 ```go
 func TestWriteJSONAtomicLeavesNoTempFile(t *testing.T) {
@@ -126,16 +126,16 @@ func TestAppendEventWritesOneJSONObjectPerLine(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run tests and verify RED**
+- [x] **Step 2: Run tests and verify RED**
 
 Run: `go test ./internal/store -v`
 Expected: compile failure because the store functions do not exist.
 
-- [ ] **Step 3: Implement durable writes and exclusive lock creation**
+- [x] **Step 3: Implement durable writes and exclusive lock creation**
 
 `WriteJSONAtomic` must create a same-directory temporary file, encode deterministic indented JSON with a final newline, call `Sync`, close, and rename. `AppendEvent` must open with append/create, write one compact JSON line, call `Sync`, and close. The lock must use `O_CREATE|O_EXCL`, record installation/host/PID/nonce/command/start time, and never break an existing lock automatically.
 
-- [ ] **Step 4: Add duplicate-writer and stale-metadata tests**
+- [x] **Step 4: Add duplicate-writer and stale-metadata tests**
 
 ```go
 func TestSecondWriterCannotAcquireLiveLock(t *testing.T) {
@@ -149,7 +149,7 @@ func TestSecondWriterCannotAcquireLiveLock(t *testing.T) {
 }
 ```
 
-- [ ] **Step 5: Verify GREEN and commit**
+- [x] **Step 5: Verify GREEN and commit**
 
 Run: `go test ./internal/store -race -v`
 Expected: PASS with no race reports.
@@ -174,7 +174,7 @@ git commit -m "feat(core): add atomic state and writer lock"
 - Produces: `projects.Register(layout paths.Layout, spec RegisterSpec, now time.Time) (model.Project, error)`
 - Produces: `projects.List(layout paths.Layout) ([]model.Project, error)`
 
-- [ ] **Step 1: Write failing registration tests**
+- [x] **Step 1: Write failing registration tests**
 
 ```go
 func TestRegisterProjectKeepsSourceExternalAndStateGlobal(t *testing.T) {
@@ -188,20 +188,20 @@ func TestRegisterProjectKeepsSourceExternalAndStateGlobal(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Verify RED**
+- [x] **Step 2: Verify RED**
 
 Run: `go test ./internal/projects -v`
 Expected: compile failure because registry types/functions do not exist.
 
-- [ ] **Step 3: Implement initialization and registration**
+- [x] **Step 3: Implement initialization and registration**
 
 Generate stable opaque IDs with `crypto/rand`; resolve the external root to an absolute path; reject missing roots, symlinks/reparse points, duplicate canonical roots, and roots inside `GptWebCall/data`. Write `INSTALLATION.json`, `PROJECT_REGISTRY.json`, project `PROJECT.json`, and matching events atomically under the writer lock.
 
-- [ ] **Step 4: Add duplicate and cross-host tests**
+- [x] **Step 4: Add duplicate and cross-host tests**
 
 Test duplicate external roots, a registry with another installation ID, malformed JSON, and a second hostname heartbeat. Each mutation must fail without changing existing bytes.
 
-- [ ] **Step 5: Verify GREEN and commit**
+- [x] **Step 5: Verify GREEN and commit**
 
 Run: `go test ./internal/projects ./internal/store ./internal/paths -race -v`
 Expected: PASS.
