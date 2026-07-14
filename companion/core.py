@@ -177,6 +177,7 @@ def start_call(
         "download_baseline": sorted(set(download_baseline)),
         "observed_download_ids": [],
         "collected_files": [],
+        "pending_downloads": [],
     }
     manifest["state"] = "ACTIVE"
     _write_json_atomic(active_path, active)
