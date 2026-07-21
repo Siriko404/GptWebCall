@@ -237,6 +237,14 @@ def validate_response(exchange_dir: Path) -> dict[str, Any]:
             invalid.append(name)
             continue
         checked.append(name)
+
+    # An artifact the call was prepared to expect must arrive even when the main
+    # JSON forgets to declare it, otherwise a silently dropped deliverable
+    # validates as complete.
+    for declared in manifest.get("expected_artifacts", []):
+        name = _safe_name(str(declared), "expected artifact filename")
+        if not (exchange / "response" / name).is_file():
+            missing.append(name)
     return _validation_report(manifest, expected_main, missing, invalid, checked)
 
 

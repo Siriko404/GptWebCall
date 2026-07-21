@@ -17,6 +17,8 @@ class ProtocolTests(unittest.TestCase):
             "PROMPT_YYYY-MM-DD_HHMMSS.txt",
             "Several calls may be active at once",
             "## Parallel calls",
+            "## Filenames are the routing key",
+            "expected_artifacts",
             "AMBIGUOUS",
             "Go",
             "Done",

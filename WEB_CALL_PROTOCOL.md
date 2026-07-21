@@ -10,27 +10,57 @@ After reading this file, a new session must:
 
 1. Treat the canonical root above as the system root and the filesystem there as operational authority.
 2. Run `active` and `list` before preparing anything, so it does not collide with an existing call.
-3. Classify the requested work before substantive reasoning.
-4. Prepare a Web call only when the work is reasoning-heavy or Sina explicitly requests one.
-5. Select only the context needed for that bounded call; never upload a repository or directory implicitly.
-6. Explain to Sina what the prepared call will do, then let Sina control Attach, Send, downloads, and Done.
-7. Treat the returned work as advisory even after deterministic file validation passes.
-8. Preserve each exchange and record accepted conclusions in the external project's own ledger or artifacts.
+3. Read "Filenames are the routing key" before writing any preparation spec.
+4. Classify the requested work before substantive reasoning.
+5. Prepare a Web call only when the work is reasoning-heavy or Sina explicitly requests one.
+6. Select only the context needed for that bounded call; never upload a repository or directory implicitly.
+7. Explain to Sina what the prepared call will do, then let Sina control Attach, Send, downloads, and Done.
+8. Treat the returned work as advisory even after deterministic file validation passes.
+9. Preserve each exchange and record accepted conclusions in the external project's own ledger or artifacts.
 
 Several calls may be active at once, each bound to its own ChatGPT tab. A single-call workflow remains the common case, and every command that acts on one active call still works without naming it when exactly one active call exists. The system is intentionally filesystem-only; `calls\`, `state\`, request snapshots, response files, manifests, and validation reports preserve continuity across sessions and compaction.
 
+## Filenames are the routing key
+
+**This is the one rule that makes the whole system work. Read it before writing any preparation spec.**
+
+Chrome does not tell an extension which tab produced a download. `chrome.downloads.DownloadItem` carries no tab id. The companion therefore decides which call a downloaded file belongs to **by its filename and nothing else**.
+
+That has one absolute consequence:
+
+> **No two calls that can still receive files may ever expect the same filename.**
+> Not the same main JSON name. Not the same artifact name. Not a main JSON of one call matching an artifact of another. Comparison is case-insensitive.
+
+A call can still receive files while it is `PREPARED` or `ACTIVE`. Once it is `COMPLETE`, `INCOMPLETE`, or `STOPPED` it releases its names and they may be reused.
+
+This is enforced, not merely requested. `prepare` refuses a spec whose `expected_main_json` or any `expected_artifacts` entry is already claimed, and names the call that holds it. `call.go` repeats the check against running calls as a backstop for hand-edited manifests. A name that slips through both and is claimed by two running calls produces `AMBIGUOUS`, and the file is left in the downloads folder untouched rather than delivered to the wrong exchange.
+
+**Declare artifact names up front.** Add `expected_artifacts` to the preparation spec listing every file the call should return besides the main JSON:
+
+```json
+{
+  "subject": "deck audit numbers pass",
+  "request_id": "deck-audit-numbers-v1",
+  "expected_main_json": "numbers_response.json",
+  "expected_artifacts": ["numbers_ledger.csv", "numbers_findings.md"],
+  "prompt_text": "...",
+  "input_files": []
+}
+```
+
+Declaring them buys three things: the collision is caught when you author the spec rather than mid-run, a promised artifact that the main JSON silently drops is reported as missing instead of validating as complete, and the failure names the file rather than describing a symptom.
+
+**How to name files so collisions cannot happen.** Prefix every deliverable with the call's own short pass name, the same token used in the subject and request ID. `numbers_response.json`, `numbers_ledger.csv`. Never `result.json`, `response.json`, `report.md`, `findings.md`, or `output.json`; generic names are exactly the ones two calls will pick independently.
+
 ## Parallel calls
 
-Chrome does not tell an extension which tab produced a download, so downloads are attributed by filename. Everything else follows from that.
+Several calls may run at once, each bound to its own ChatGPT tab.
 
-- Each active call is bound to one tab. A tab may drive only one call.
-- Two active calls may never expect the same `expected_main_json`. `call.go` refuses the second one, naming the conflict.
-- Artifact filenames must also be unique across calls running at the same time. When two calls both list the same artifact name, the companion reports `AMBIGUOUS` and moves nothing rather than guessing.
-- An artifact downloaded before any main JSON waits in a shared pending pool and is released to whichever call's main JSON later names it.
+- Each active call is bound to one tab, and a tab may drive only one call.
+- An artifact downloaded before any main JSON waits in a shared pending pool and is released to whichever call's main JSON later names it. Distinct filenames are what make that release unambiguous.
 - `done`, `stop`, and `repair` take `--exchange`. With exactly one active call the flag may be omitted; with several, omitting it is an error rather than a guess.
 - Each armed tab shows Chrome's "being debugged" banner until its files are attached.
-
-The practical rule when preparing a batch: give every call in the batch a distinct, descriptive `expected_main_json` and distinct artifact names. Prefix them with the pass name.
+- Sina still drives every call by hand: Go, Attach, Send, download, Done, once per call. Parallel removes the waiting, not the clicking.
 
 ## Triage
 
@@ -87,6 +117,8 @@ Every call needs three things before preparation:
 3. A preparation spec — tells the local companion what to snapshot and what main filename to expect.
 
 Use a unique, stable `request_id` in both the request and preparation spec. Use a concise, safe subject. Give every source an explicit packaged filename. Use absolute source paths. Never supply a prompt file: the companion generates `PROMPT_YYYY-MM-DD_HHMMSS.txt` itself.
+
+Name every returned file after the call itself and declare the artifacts in `expected_artifacts`. See "Filenames are the routing key" above; a generic name such as `result.json` will be refused as soon as a second call wants it.
 
 ### WEB_REVIEW_REQUEST.json template
 
@@ -150,6 +182,7 @@ Store this temporary spec anywhere safe. Operational scratch under `state\` is i
   "subject": "Short call subject",
   "request_id": "unique-project-task-v1",
   "expected_main_json": "unique_project_task_response.json",
+  "expected_artifacts": ["unique_project_task_report.md"],
   "prompt_text": "Read every attached file. Follow WEB_REVIEW_REQUEST.json and WEB_RESPONSE_SCHEMA.json. Return no conversational text: deliver only the downloadable main JSON file and any artifacts listed in it. If blocked or incomplete, still return the main JSON with status PARTIAL or BLOCKED.",
   "input_files": [
     {
@@ -168,7 +201,7 @@ Store this temporary spec anywhere safe. Operational scratch under `state\` is i
 }
 ```
 
-`created_at` is optional. Normally omit it so the companion uses the current local time. The companion verifies the two governing JSON files, checks `request_id`, copies only the enumerated files, hashes the snapshots, and publishes the exchange atomically.
+`created_at` is optional. Normally omit it so the companion uses the current local time. `expected_artifacts` is optional but strongly recommended: it reserves those filenames and turns a silently dropped artifact into a reported defect. The companion verifies the two governing JSON files, checks `request_id`, rejects any deliverable filename already claimed by a prepared or active call, copies only the enumerated files, hashes the snapshots, and publishes the exchange atomically.
 
 Prepare and inspect:
 

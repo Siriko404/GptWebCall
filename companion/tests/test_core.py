@@ -143,7 +143,9 @@ class CoreTests(unittest.TestCase):
     def test_list_ready_calls_and_single_active_call(self):
         first = prepare_call(self.root, self.spec("First"), self.now)
         second = prepare_call(
-            self.root, self.spec("Second"), self.now + timedelta(seconds=1)
+            self.root,
+            self.spec("Second", expected_main_json="second_result.json"),
+            self.now + timedelta(seconds=1),
         )
 
         ready = list_ready_calls(self.root)
@@ -151,6 +153,7 @@ class CoreTests(unittest.TestCase):
             [item["exchange_id"] for item in ready],
             [first["exchange_id"], second["exchange_id"]],
         )
+
 
         active = start_call(self.root, first["exchange_id"], 11, [2, 4])
         self.assertTrue(active["monitoring"])
@@ -185,14 +188,24 @@ class CoreTests(unittest.TestCase):
             load_active_call(self.root, second["exchange_id"])["tab_id"], 12
         )
 
-    def test_a_second_call_cannot_reuse_the_same_main_json_name(self):
+    def test_start_refuses_a_name_collision_introduced_after_preparation(self):
+        # prepare_call already refuses colliding names, so this backstop only
+        # fires when a manifest is edited on disk after it was prepared.
         first = prepare_call(self.root, self.spec(subject="First"), self.now)
         second = prepare_call(
-            self.root, self.spec(subject="Second"), self.now + timedelta(minutes=1)
+            self.root,
+            self.spec(subject="Second", expected_main_json="second_result.json"),
+            self.now + timedelta(minutes=1),
         )
         start_call(self.root, first["exchange_id"], 11, [])
+        manifest_path = (
+            self.root / "calls" / second["exchange_id"] / "EXCHANGE_MANIFEST.json"
+        )
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        manifest["expected_main_json"] = "result.json"
+        manifest_path.write_text(json.dumps(manifest) + "\n", encoding="utf-8")
 
-        with self.assertRaisesRegex(RuntimeError, "expected_main_json"):
+        with self.assertRaisesRegex(RuntimeError, "already running and expects"):
             start_call(self.root, second["exchange_id"], 12, [])
 
     def test_a_second_call_cannot_reuse_a_bound_tab(self):

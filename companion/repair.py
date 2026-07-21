@@ -117,6 +117,7 @@ def collect_defects(exchange_dir: Path) -> list[dict[str, Any]]:
 
     defects.extend(_artifact_defects(raw, response_dir, expected_main))
     defects.extend(_delivery_defects(raw, expected_main))
+    defects.extend(_undeclared_expected_defects(raw, manifest, response_dir))
     return defects
 
 
@@ -389,6 +390,35 @@ def _artifact_defects(
                     f"the delivered file hashes to {actual_digest}",
                 )
             )
+    return defects
+
+
+def _undeclared_expected_defects(
+    raw: dict[str, Any], manifest: dict[str, Any], response_dir: Path
+) -> list[dict[str, Any]]:
+    """Catch a promised artifact that the main JSON never mentions at all."""
+    declared_in_main = set()
+    artifacts = raw.get("artifacts_manifest")
+    if isinstance(artifacts, list):
+        for artifact in artifacts:
+            if isinstance(artifact, dict) and isinstance(artifact.get("filename"), str):
+                declared_in_main.add(artifact["filename"].casefold())
+
+    defects: list[dict[str, Any]] = []
+    for item in manifest.get("expected_artifacts", []):
+        name = _safe_name(str(item), "expected artifact filename")
+        if name.casefold() in declared_in_main:
+            continue
+        if (response_dir / name).is_file():
+            continue
+        defects.append(
+            _defect(
+                "EXPECTED_ARTIFACT_ABSENT",
+                name,
+                "this artifact, which the call was prepared to expect",
+                "it is neither listed in artifacts_manifest nor delivered",
+            )
+        )
     return defects
 
 

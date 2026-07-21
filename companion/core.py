@@ -45,6 +45,7 @@ def prepare_call(root: Path, spec: dict[str, Any], now: datetime) -> dict[str, A
     input_files = spec.get("input_files")
     if not isinstance(input_files, list) or not input_files:
         raise ValueError("input_files must be a non-empty list")
+    expected_artifacts = _expected_artifact_names(spec)
 
     timestamp = now.strftime(_TIMESTAMP)
     exchange_id = f"{timestamp}_{slug}"
@@ -88,6 +89,9 @@ def prepare_call(root: Path, spec: dict[str, Any], now: datetime) -> dict[str, A
 
     state_dir.mkdir(parents=True, exist_ok=True)
     calls_dir.mkdir(parents=True, exist_ok=True)
+    _assert_deliverable_names_are_free(
+        root, exchange_id, [expected_main, *expected_artifacts]
+    )
     staging = Path(tempfile.mkdtemp(prefix=f".{exchange_id}-", dir=state_dir))
     try:
         request_dir = staging / "request"
@@ -121,6 +125,7 @@ def prepare_call(root: Path, spec: dict[str, Any], now: datetime) -> dict[str, A
             "created_at": now.astimezone(timezone.utc).isoformat(),
             "state": "PREPARED",
             "expected_main_json": expected_main,
+            "expected_artifacts": expected_artifacts,
             "request_files": request_files,
             "response_dir": "response",
         }
@@ -130,6 +135,68 @@ def prepare_call(root: Path, spec: dict[str, Any], now: datetime) -> dict[str, A
     except BaseException:
         shutil.rmtree(staging, ignore_errors=True)
         raise
+
+
+def _expected_artifact_names(spec: dict[str, Any]) -> list[str]:
+    declared = spec.get("expected_artifacts", [])
+    if not isinstance(declared, list):
+        raise ValueError("expected_artifacts must be a list of file names")
+    names: list[str] = []
+    seen: set[str] = set()
+    for item in declared:
+        if not isinstance(item, str):
+            raise ValueError("expected_artifacts must contain file names")
+        name = _safe_name(item, "expected artifact filename")
+        if name.casefold() in seen:
+            raise ValueError(f"duplicate expected artifact: {name}")
+        seen.add(name.casefold())
+        names.append(name)
+    return names
+
+
+def claimed_deliverable_names(
+    root: Path, exclude_exchange_id: str | None = None
+) -> dict[str, str]:
+    """Map every deliverable filename already spoken for to its exchange.
+
+    Downloads are attributed by filename, so a name may be claimed by only one
+    exchange that is still able to receive files. Exchanges that are finished,
+    stopped, or incomplete no longer hold their names.
+    """
+    calls_dir = Path(root).resolve() / "calls"
+    if not calls_dir.is_dir():
+        return {}
+    claimed: dict[str, str] = {}
+    for manifest_path in calls_dir.glob("*/EXCHANGE_MANIFEST.json"):
+        manifest = _read_json_object(manifest_path, "EXCHANGE_MANIFEST")
+        if manifest.get("state") not in {"PREPARED", "ACTIVE"}:
+            continue
+        exchange_id = str(manifest.get("exchange_id", ""))
+        if exchange_id == exclude_exchange_id:
+            continue
+        names = [
+            str(manifest.get("expected_main_json", "")),
+            *[str(item) for item in manifest.get("expected_artifacts", [])],
+        ]
+        for name in names:
+            if name:
+                claimed.setdefault(name.casefold(), exchange_id)
+    return claimed
+
+
+def _assert_deliverable_names_are_free(
+    root: Path, exchange_id: str, names: list[str]
+) -> None:
+    claimed = claimed_deliverable_names(root, exclude_exchange_id=exchange_id)
+    for name in names:
+        owner = claimed.get(name.casefold())
+        if owner:
+            raise ValueError(
+                f"the filename {name} is already claimed by call {owner}. "
+                "Downloads are routed by filename, so every call that can still "
+                "receive files needs its own deliverable names. Prefix this "
+                "call's filenames with its pass name and prepare it again."
+            )
 
 
 def list_ready_calls(root: Path) -> list[dict[str, Any]]:
@@ -289,7 +356,6 @@ def _assert_can_run_alongside(
     the same main JSON name. Tabs are the attachment binding, so one tab may
     drive only one call.
     """
-    expected_main = str(manifest["expected_main_json"]).casefold()
     for other in load_active_calls(root):
         if other.get("exchange_id") == exchange_id:
             raise RuntimeError("this call is already active")
@@ -297,11 +363,20 @@ def _assert_can_run_alongside(
             raise RuntimeError(
                 f"tab {tab_id} is already bound to call {other['exchange_id']}"
             )
-        if str(other.get("expected_main_json", "")).casefold() == expected_main:
+
+    mine = [
+        str(manifest["expected_main_json"]),
+        *[str(item) for item in manifest.get("expected_artifacts", [])],
+    ]
+    claimed = claimed_deliverable_names(root, exclude_exchange_id=exchange_id)
+    running = {record["exchange_id"] for record in load_active_calls(root)}
+    for name in mine:
+        owner = claimed.get(name.casefold())
+        if owner in running:
             raise RuntimeError(
-                "another active call already expects "
-                f"{manifest['expected_main_json']}; concurrent calls need distinct "
-                "expected_main_json names so downloads can be routed"
+                f"call {owner} is already running and expects the filename {name}. "
+                "Downloads are routed by filename, so concurrent calls need "
+                "distinct expected_main_json and artifact names."
             )
 
 
@@ -390,8 +465,11 @@ def _active_path(root: Path) -> Path:
 
 
 def _read_json_object(path: Path, label: str) -> dict[str, Any]:
+    # utf-8-sig tolerates a byte-order mark. PowerShell writes one by default and
+    # ChatGPT sometimes emits one, and rejecting those files taught nobody
+    # anything. Hashes are still computed over the raw bytes on disk.
     try:
-        value = json.loads(path.read_text(encoding="utf-8"))
+        value = json.loads(path.read_text(encoding="utf-8-sig"))
     except (OSError, UnicodeError, json.JSONDecodeError) as error:
         raise ValueError(f"{label} is not valid JSON: {path.name}") from error
     if not isinstance(value, dict):
