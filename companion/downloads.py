@@ -51,12 +51,13 @@ def handle_completed_download(root: Path, download: dict[str, Any]) -> dict[str,
     expected_main = _safe_name(
         str(manifest["expected_main_json"]), "expected main JSON filename"
     )
+    supersede_round = _supersede_round(active)
     active.setdefault("observed_download_ids", []).append(download_id)
 
     if _matches_expected_name(source.name, expected_main):
         try:
             main = _parse_main_response(source, manifest["request_id"], expected_main)
-            _safe_move(source, exchange / "response" / expected_main)
+            _safe_move(source, exchange / "response" / expected_main, supersede_round)
         except FileExistsError as error:
             _save_active(root, active)
             return {"status": "CONFLICT", "error": str(error)}
@@ -64,7 +65,7 @@ def handle_completed_download(root: Path, download: dict[str, Any]) -> dict[str,
             _save_active(root, active)
             return {"status": "INVALID", "error": str(error)}
         _record_collected(active, expected_main)
-        released = _release_pending(root, active, exchange, main)
+        released = _release_pending(root, active, exchange, main, supersede_round)
         _save_active(root, active)
         return {
             "status": "MOVED",
@@ -86,7 +87,7 @@ def handle_completed_download(root: Path, download: dict[str, Any]) -> dict[str,
     if artifact is None:
         _save_active(root, active)
         return {"status": "IGNORED", "reason": "not listed by the main JSON"}
-    result = _move_artifact(source, exchange, artifact)
+    result = _move_artifact(source, exchange, artifact, supersede_round)
     if result["status"] == "MOVED":
         _record_collected(active, artifact["filename"])
     _save_active(root, active)
@@ -275,11 +276,19 @@ def _matching_artifact(
     return None
 
 
+def _supersede_round(active: dict[str, Any]) -> int | None:
+    value = active.get("repair_round")
+    if isinstance(value, int) and not isinstance(value, bool) and value > 0:
+        return value
+    return None
+
+
 def _release_pending(
     root: Path,
     active: dict[str, Any],
     exchange: Path,
     main: dict[str, Any],
+    supersede_round: int | None = None,
 ) -> list[str]:
     remaining: list[dict[str, Any]] = []
     moved: list[str] = []
@@ -291,7 +300,7 @@ def _release_pending(
         if artifact is None:
             remaining.append(pending)
             continue
-        result = _move_artifact(path, exchange, artifact)
+        result = _move_artifact(path, exchange, artifact, supersede_round)
         if result["status"] == "MOVED":
             name = artifact["filename"]
             _record_collected(active, name)
@@ -303,7 +312,10 @@ def _release_pending(
 
 
 def _move_artifact(
-    source: Path, exchange: Path, artifact: dict[str, Any]
+    source: Path,
+    exchange: Path,
+    artifact: dict[str, Any],
+    supersede_round: int | None = None,
 ) -> dict[str, Any]:
     digest, size = _sha256(source)
     if digest != artifact["sha256"] or size != artifact["size"]:
@@ -312,13 +324,17 @@ def _move_artifact(
             "error": f"artifact hash or size does not match: {artifact['filename']}",
         }
     try:
-        _safe_move(source, exchange / "response" / artifact["filename"])
+        _safe_move(
+            source, exchange / "response" / artifact["filename"], supersede_round
+        )
     except FileExistsError as error:
         return {"status": "CONFLICT", "error": str(error)}
     return {"status": "MOVED", "stored_name": artifact["filename"]}
 
 
-def _safe_move(source: Path, destination: Path) -> None:
+def _safe_move(
+    source: Path, destination: Path, supersede_round: int | None = None
+) -> None:
     source = source.resolve(strict=True)
     destination.parent.mkdir(parents=True, exist_ok=True)
     source_digest, source_size = _sha256(source)
@@ -327,9 +343,11 @@ def _safe_move(source: Path, destination: Path) -> None:
         if source_digest == destination_digest and source_size == destination_size:
             source.unlink()
             return
-        raise FileExistsError(
-            f"response already contains different bytes: {destination.name}"
-        )
+        if supersede_round is None:
+            raise FileExistsError(
+                f"response already contains different bytes: {destination.name}"
+            )
+        _archive_superseded(destination, supersede_round)
 
     descriptor, temporary_name = tempfile.mkstemp(
         prefix=".incoming-", suffix=".tmp", dir=destination.parent
@@ -349,6 +367,20 @@ def _safe_move(source: Path, destination: Path) -> None:
     except BaseException:
         temporary.unlink(missing_ok=True)
         raise
+
+
+def _archive_superseded(destination: Path, supersede_round: int) -> None:
+    """Move a rejected earlier delivery aside so a correction round can replace it."""
+    archive = destination.parent / "superseded" / f"round{supersede_round}"
+    archive.mkdir(parents=True, exist_ok=True)
+    target = archive / destination.name
+    attempt = 1
+    while target.exists():
+        attempt += 1
+        stem = Path(destination.name).stem
+        suffix = Path(destination.name).suffix
+        target = archive / f"{stem} ({attempt}){suffix}"
+    os.replace(destination, target)
 
 
 def _matches_expected_name(actual: str, expected: str) -> bool:

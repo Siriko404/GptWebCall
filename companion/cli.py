@@ -16,6 +16,7 @@ from companion.core import (
     stop_call,
 )
 from companion.downloads import finalize_exchange, finish_call
+from companion.repair import collect_defects, open_repair_round
 
 
 def run(
@@ -50,6 +51,15 @@ def run(
             result = stop_call(root)
         elif command == "validate":
             result = finalize_exchange(root, options.exchange)
+        elif command == "defects":
+            result = collect_defects(_exchange_dir(root, options.exchange))
+        elif command == "repair":
+            result = open_repair_round(
+                root,
+                options.exchange,
+                options.tab,
+                [],
+            )
         else:
             raise ValueError(f"unsupported command: {command}")
     except (Exception, SystemExit) as error:
@@ -84,6 +94,11 @@ def _parser() -> argparse.ArgumentParser:
     subcommands.add_parser("stop", exit_on_error=False)
     validate = subcommands.add_parser("validate", exit_on_error=False)
     validate.add_argument("--exchange", required=True)
+    defects = subcommands.add_parser("defects", exit_on_error=False)
+    defects.add_argument("--exchange", required=True)
+    repair = subcommands.add_parser("repair", exit_on_error=False)
+    repair.add_argument("--exchange", required=True)
+    repair.add_argument("--tab", type=int, default=None)
     return parser
 
 

@@ -28,7 +28,15 @@
         <div id="validation-report" class="report" hidden></div>
         <button id="resume-button" class="primary" type="button" hidden>Resume attachment</button>
         <button id="done-button" class="primary" type="button" hidden>Done and validate</button>
+        <button id="repair-button" class="primary" type="button" hidden>Send correction round</button>
         <button id="stop-button" class="secondary" type="button" hidden>Stop call</button>
+      </section>
+
+      <section id="repair-card" class="card" hidden>
+        <h2>Correction prompt</h2>
+        <p class="subtitle">Review it in ChatGPT, then click Send yourself.</p>
+        <pre id="repair-prompt" class="report"></pre>
+        <button id="copy-repair-button" class="secondary" type="button">Copy prompt</button>
       </section>
     </main>
     <script type="module" src="sidepanel.js"></script>

@@ -17,6 +17,7 @@ from companion.core import (
     stop_call,
 )
 from companion.downloads import finish_call, handle_completed_download
+from companion.repair import open_repair_round
 
 
 MAX_MESSAGE_SIZE = 1024 * 1024
@@ -28,6 +29,7 @@ ALLOWED_COMMANDS = {
     "call.resume",
     "download.completed",
     "call.done",
+    "call.repair",
     "call.stop",
 }
 
@@ -135,6 +137,14 @@ def dispatch(root: Path, message: dict[str, Any]) -> dict[str, Any] | list[Any] 
             raise RuntimeError("no call is active and no prior result exists")
         value = json.loads(last_result.read_text(encoding="utf-8"))
         return value["report"]
+    if command == "call.repair":
+        _require_keys(payload, {"exchange_id", "tab_id", "download_baseline"})
+        return open_repair_round(
+            root,
+            _required_string(payload, "exchange_id"),
+            _required_integer(payload, "tab_id"),
+            _integer_list(payload, "download_baseline"),
+        )
     if command == "call.stop":
         _require_keys(payload, set())
         return stop_call(root)

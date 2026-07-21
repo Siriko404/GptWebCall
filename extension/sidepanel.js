@@ -6,6 +6,10 @@ const goButton = document.querySelector("#go-button");
 const resumeButton = document.querySelector("#resume-button");
 const doneButton = document.querySelector("#done-button");
 const stopButton = document.querySelector("#stop-button");
+const repairButton = document.querySelector("#repair-button");
+const repairCard = document.querySelector("#repair-card");
+const repairPrompt = document.querySelector("#repair-prompt");
+const copyRepairButton = document.querySelector("#copy-repair-button");
 const validationReport = document.querySelector("#validation-report");
 
 
@@ -62,6 +66,29 @@ resumeButton.addEventListener("click", async () => {
 });
 
 
+repairButton.addEventListener("click", async () => {
+  setBusy(true);
+  try {
+    const handoff = await send({ type: "REPAIR" });
+    renderHandoff(handoff);
+  } catch (error) {
+    status.textContent = error.message;
+  } finally {
+    setBusy(false);
+  }
+});
+
+
+copyRepairButton.addEventListener("click", async () => {
+  try {
+    await navigator.clipboard.writeText(repairPrompt.textContent);
+    copyRepairButton.textContent = "Copied";
+  } catch (error) {
+    copyRepairButton.textContent = "Copy failed";
+  }
+});
+
+
 select.addEventListener("change", () => {
   const call = select.selectedOptions[0]?.call;
   summary.textContent = call
@@ -81,8 +108,10 @@ async function refresh() {
   try {
     const state = await send({ type: "GET_STATUS" });
     renderReady(state.ready);
+    repairButton.hidden = !state.canRepair;
     if (state.handoff) {
       renderHandoff(state.handoff);
+      repairButton.hidden = !state.canRepair;
     } else if (state.active) {
       status.textContent = "A call is active. Stop it or resume after reopening Chrome.";
       stopButton.hidden = false;
@@ -129,6 +158,12 @@ function renderHandoff(handoff) {
   doneButton.hidden = false;
   resumeButton.hidden = true;
   stopButton.hidden = false;
+  if (handoff.repairPrompt) {
+    repairPrompt.textContent = handoff.repairPrompt;
+    repairCard.hidden = false;
+    copyRepairButton.textContent = "Copy prompt";
+    repairButton.hidden = true;
+  }
 }
 
 
@@ -157,6 +192,7 @@ function setBusy(busy) {
   stopButton.disabled = busy;
   doneButton.disabled = busy;
   resumeButton.disabled = busy;
+  repairButton.disabled = busy;
 }
 
 

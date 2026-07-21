@@ -84,6 +84,7 @@ class NativeHostTests(unittest.TestCase):
                 "call.resume",
                 "download.completed",
                 "call.done",
+                "call.repair",
                 "call.stop",
             },
         )

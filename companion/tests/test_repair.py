@@ -1,0 +1,258 @@
+import hashlib
+import json
+import tempfile
+import unittest
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+
+from companion.core import load_active_call, prepare_call, start_call
+from companion.downloads import finish_call, handle_completed_download
+from companion.repair import build_repair_prompt, collect_defects, open_repair_round
+
+
+class RepairTests(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        base = Path(self.temp.name)
+        self.root = base / "GptWebCall"
+        self.sources = base / "sources"
+        self.downloads = base / "Downloads"
+        self.sources.mkdir()
+        self.downloads.mkdir()
+        request = self.write_source(
+            "WEB_REVIEW_REQUEST.json", {"request_id": "request_fixture"}
+        )
+        schema = self.write_source("WEB_RESPONSE_SCHEMA.json", {"type": "object"})
+        spec = {
+            "subject": "Fixture call",
+            "request_id": "request_fixture",
+            "expected_main_json": "result.json",
+            "prompt_text": "Return files only.\n",
+            "input_files": [
+                {"path": str(request), "filename": request.name},
+                {"path": str(schema), "filename": schema.name},
+            ],
+        }
+        now = datetime(2026, 7, 21, 9, 0, 0, tzinfo=timezone(timedelta(hours=-4)))
+        self.manifest = prepare_call(self.root, spec, now)
+        self.exchange_id = self.manifest["exchange_id"]
+        start_call(self.root, self.exchange_id, 11, [])
+        self.exchange = self.root / "calls" / self.exchange_id
+        self.report_bytes = b"report"
+        self.report_digest = hashlib.sha256(self.report_bytes).hexdigest()
+
+    def tearDown(self):
+        self.temp.cleanup()
+
+    def write_source(self, name, value):
+        path = self.sources / name
+        path.write_text(json.dumps(value) + "\n", encoding="utf-8")
+        return path
+
+    def download(self, name, contents):
+        path = self.downloads / name
+        path.write_bytes(contents)
+        return path
+
+    def main_json_bytes(
+        self,
+        *,
+        request_id="request_fixture",
+        status="COMPLETE",
+        artifacts=True,
+        artifact_digest=None,
+        artifact_size=None,
+        delivery=None,
+        limitations=None,
+    ):
+        manifest = []
+        names = ["result.json"]
+        if artifacts:
+            manifest.append(
+                {
+                    "filename": "report.md",
+                    "status": "CREATED",
+                    "media_type": "text/markdown",
+                    "size": len(self.report_bytes) if artifact_size is None else artifact_size,
+                    "sha256": artifact_digest or self.report_digest,
+                }
+            )
+            names.append("report.md")
+        body = {
+            "request_id": request_id,
+            "status": status,
+            "artifacts_manifest": manifest,
+            "delivery": names if delivery is None else delivery,
+        }
+        if limitations is not None:
+            body["limitations"] = limitations
+        return (json.dumps(body) + "\n").encode("utf-8")
+
+    def completed(self, download_id, path):
+        return {"id": download_id, "filename": str(path), "state": "complete"}
+
+    def deliver_main_only(self):
+        main = self.download("result.json", self.main_json_bytes())
+        handle_completed_download(self.root, self.completed(3, main))
+
+    def test_missing_artifact_is_reported_with_its_name(self):
+        self.deliver_main_only()
+        finish_call(self.root)
+
+        defects = collect_defects(self.exchange)
+
+        self.assertEqual(len(defects), 1)
+        self.assertEqual(defects[0]["kind"], "ARTIFACT_MISSING")
+        self.assertEqual(defects[0]["target"], "report.md")
+
+    def test_missing_main_json_is_the_only_defect_reported(self):
+        finish_call(self.root)
+
+        defects = collect_defects(self.exchange)
+
+        self.assertEqual([defect["kind"] for defect in defects], ["MAIN_MISSING"])
+        self.assertEqual(defects[0]["target"], "result.json")
+
+    def test_hash_mismatch_reports_declared_and_actual_digests(self):
+        wrong_digest = hashlib.sha256(b"different").hexdigest()
+        main = self.download(
+            "result.json", self.main_json_bytes(artifact_digest=wrong_digest)
+        )
+        handle_completed_download(self.root, self.completed(3, main))
+        (self.exchange / "response" / "report.md").write_bytes(self.report_bytes)
+        finish_call(self.root)
+
+        defects = collect_defects(self.exchange)
+
+        kinds = [defect["kind"] for defect in defects]
+        self.assertIn("ARTIFACT_HASH_MISMATCH", kinds)
+        mismatch = defects[kinds.index("ARTIFACT_HASH_MISMATCH")]
+        self.assertIn(wrong_digest, mismatch["expected"])
+        self.assertIn(self.report_digest, mismatch["observed"])
+
+    def test_partial_status_is_reported_with_its_limitations(self):
+        main = self.download(
+            "result.json",
+            self.main_json_bytes(
+                status="PARTIAL", artifacts=False, limitations=["ran out of context"]
+            ),
+        )
+        handle_completed_download(self.root, self.completed(3, main))
+        finish_call(self.root)
+
+        defects = collect_defects(self.exchange)
+
+        self.assertEqual([defect["kind"] for defect in defects], ["STATUS_NOT_COMPLETE"])
+        self.assertIn("ran out of context", defects[0]["observed"])
+
+    def test_delivery_omission_is_reported(self):
+        # The strict move gate refuses this main JSON, so it only reaches the
+        # response directory through the manual fallback path.
+        (self.exchange / "response" / "result.json").write_bytes(
+            self.main_json_bytes(delivery=["result.json"])
+        )
+        (self.exchange / "response" / "report.md").write_bytes(self.report_bytes)
+        finish_call(self.root)
+
+        defects = collect_defects(self.exchange)
+
+        self.assertEqual([defect["kind"] for defect in defects], ["DELIVERY_INCOMPLETE"])
+        self.assertIn("report.md", defects[0]["observed"])
+
+    def test_complete_delivery_has_no_defects(self):
+        main = self.download("result.json", self.main_json_bytes())
+        artifact = self.download("report.md", self.report_bytes)
+        handle_completed_download(self.root, self.completed(3, main))
+        handle_completed_download(self.root, self.completed(4, artifact))
+        report = finish_call(self.root)
+
+        self.assertEqual(report["status"], "COMPLETE")
+        self.assertEqual(collect_defects(self.exchange), [])
+
+    def test_prompt_names_every_defect_and_keeps_the_request_id(self):
+        self.deliver_main_only()
+        finish_call(self.root)
+        defects = collect_defects(self.exchange)
+
+        prompt = build_repair_prompt(self.exchange, defects, 1)
+
+        self.assertIn("CORRECTION ROUND 1", prompt)
+        self.assertIn("request_fixture", prompt)
+        self.assertIn("ARTIFACT_MISSING", prompt)
+        self.assertIn("report.md", prompt)
+        self.assertNotIn("—", prompt)
+
+    def test_open_repair_round_rearms_monitoring_and_writes_round_files(self):
+        self.deliver_main_only()
+        finish_call(self.root)
+        self.assertIsNone(load_active_call(self.root))
+
+        result = open_repair_round(self.root, self.exchange_id, tab_id=42, download_baseline=[7])
+
+        self.assertEqual(result["round"], 1)
+        self.assertTrue(Path(result["prompt_path"]).is_file())
+        self.assertTrue(Path(result["defects_path"]).is_file())
+        active = load_active_call(self.root)
+        self.assertEqual(active["exchange_id"], self.exchange_id)
+        self.assertEqual(active["tab_id"], 42)
+        self.assertEqual(active["repair_round"], 1)
+        self.assertTrue(active["monitoring"])
+        manifest = json.loads(
+            (self.exchange / "EXCHANGE_MANIFEST.json").read_text(encoding="utf-8")
+        )
+        self.assertEqual(manifest["state"], "ACTIVE")
+        self.assertEqual(manifest["repair_round"], 1)
+        self.assertEqual(manifest["repairs"][0]["defect_kinds"], ["ARTIFACT_MISSING"])
+
+    def test_repair_round_supersedes_the_earlier_main_json(self):
+        wrong_digest = hashlib.sha256(b"different").hexdigest()
+        first = self.download(
+            "result.json", self.main_json_bytes(artifact_digest=wrong_digest)
+        )
+        handle_completed_download(self.root, self.completed(3, first))
+        (self.exchange / "response" / "report.md").write_bytes(self.report_bytes)
+        finish_call(self.root)
+        original = (self.exchange / "response" / "result.json").read_bytes()
+
+        open_repair_round(self.root, self.exchange_id, tab_id=42, download_baseline=[])
+        corrected = self.download("result.json", self.main_json_bytes())
+        result = handle_completed_download(self.root, self.completed(9, corrected))
+
+        self.assertEqual(result["status"], "MOVED")
+        self.assertEqual(
+            (self.exchange / "response" / "result.json").read_bytes(),
+            self.main_json_bytes(),
+        )
+        archived = self.exchange / "response" / "superseded" / "round1" / "result.json"
+        self.assertEqual(archived.read_bytes(), original)
+        self.assertEqual(finish_call(self.root)["status"], "COMPLETE")
+
+    def test_repair_is_refused_when_nothing_is_wrong(self):
+        main = self.download("result.json", self.main_json_bytes())
+        artifact = self.download("report.md", self.report_bytes)
+        handle_completed_download(self.root, self.completed(3, main))
+        handle_completed_download(self.root, self.completed(4, artifact))
+        finish_call(self.root)
+
+        with self.assertRaisesRegex(RuntimeError, "no validation defects"):
+            open_repair_round(self.root, self.exchange_id, tab_id=42, download_baseline=[])
+
+    def test_second_round_increments_and_keeps_the_first_round_files(self):
+        self.deliver_main_only()
+        finish_call(self.root)
+        open_repair_round(self.root, self.exchange_id, tab_id=42, download_baseline=[])
+        finish_call(self.root)
+
+        second = open_repair_round(self.root, self.exchange_id, tab_id=42, download_baseline=[])
+
+        self.assertEqual(second["round"], 2)
+        self.assertTrue((self.exchange / "repair" / "ROUND_1_PROMPT.txt").is_file())
+        self.assertTrue((self.exchange / "repair" / "ROUND_2_PROMPT.txt").is_file())
+        manifest = json.loads(
+            (self.exchange / "EXCHANGE_MANIFEST.json").read_text(encoding="utf-8")
+        )
+        self.assertEqual(len(manifest["repairs"]), 2)
+
+
+if __name__ == "__main__":
+    unittest.main()

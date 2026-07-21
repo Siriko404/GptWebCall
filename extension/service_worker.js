@@ -68,6 +68,8 @@ async function handlePanelMessage(message) {
       return stopActiveCall();
     case "DONE":
       return finishActiveCall();
+    case "REPAIR":
+      return openRepairRound(message.exchangeId);
     default:
       throw new Error(`Unknown extension command: ${message?.type}`);
   }
@@ -78,13 +80,17 @@ async function getStatus() {
   const [ready, active, stored] = await Promise.all([
     nativeCommand("calls.list_ready"),
     nativeCommand("call.active"),
-    chrome.storage.session.get(["handoff", "lastReport"]),
+    chrome.storage.session.get(["handoff", "lastReport", "lastHandoff"]),
   ]);
   return {
     ready,
     active,
     handoff: stored.handoff ?? null,
     lastReport: stored.lastReport ?? null,
+    canRepair: Boolean(
+      stored.lastReport?.status === "INCOMPLETE"
+      && Number.isInteger((stored.handoff ?? stored.lastHandoff)?.tabId),
+    ),
   };
 }
 
@@ -217,6 +223,89 @@ async function completeAttachment(source, params) {
 }
 
 
+async function openRepairRound(exchangeId) {
+  const stored = await chrome.storage.session.get(["handoff", "lastHandoff"]);
+  const handoff = stored.handoff ?? stored.lastHandoff ?? {};
+  const tabId = handoff.tabId;
+  const target = exchangeId ?? handoff.exchangeId;
+  if (!Number.isInteger(tabId)) {
+    throw new Error("No bound ChatGPT tab. Use Resume attachment first.");
+  }
+  if (typeof target !== "string" || !target) {
+    throw new Error("No exchange to repair");
+  }
+  const existingDownloads = await chrome.downloads.search({});
+  const result = await nativeCommand("call.repair", {
+    exchange_id: target,
+    tab_id: tabId,
+    download_baseline: existingDownloads.map((item) => item.id),
+  });
+
+  let inserted = false;
+  let insertError = "";
+  try {
+    inserted = await insertPromptIntoComposer(tabId, result.prompt);
+  } catch (error) {
+    insertError = error.message;
+  }
+
+  const updated = {
+    ...handoff,
+    exchangeId: result.exchange_id,
+    armed: false,
+    monitoring: true,
+    monitoringStartedAt: result.active.started_at,
+    downloadBaseline: result.active.download_baseline,
+    observedDownloadIds: [],
+    repairRound: result.round,
+    repairPrompt: result.prompt,
+    repairPromptPath: result.prompt_path,
+    status: inserted ? "REPAIR_PROMPT_INSERTED" : "REPAIR_PROMPT_READY",
+    message: inserted
+      ? `Correction round ${result.round} typed into ChatGPT. Review it, then click Send.`
+      : `Correction round ${result.round} ready. Copy the prompt below into ChatGPT, then click Send.`
+        + (insertError ? ` (${insertError})` : ""),
+  };
+  await chrome.storage.session.set({
+    handoff: updated,
+    downloadTracker: { ids: [], processing: [] },
+    lastReport: null,
+  });
+  await broadcastStatus(updated);
+  return updated;
+}
+
+
+async function insertPromptIntoComposer(tabId, text) {
+  await chrome.debugger.attach({ tabId }, "1.3");
+  try {
+    await chrome.debugger.sendCommand({ tabId }, "Runtime.enable", {});
+    const focused = await chrome.debugger.sendCommand(
+      { tabId },
+      "Runtime.evaluate",
+      {
+        expression: `(() => {
+          const composer = document.querySelector("#prompt-textarea")
+            ?? document.querySelector("div[contenteditable='true']")
+            ?? document.querySelector("textarea");
+          if (!composer) { return false; }
+          composer.focus();
+          return true;
+        })()`,
+        returnByValue: true,
+      },
+    );
+    if (focused?.result?.value !== true) {
+      throw new Error("the ChatGPT composer was not found on the bound tab");
+    }
+    await chrome.debugger.sendCommand({ tabId }, "Input.insertText", { text });
+    return true;
+  } finally {
+    await safeDetach(tabId);
+  }
+}
+
+
 async function stopActiveCall() {
   const stored = await chrome.storage.session.get("handoff");
   if (Number.isInteger(stored.handoff?.tabId)) {
@@ -289,7 +378,11 @@ async function finishActiveCall() {
     });
   }
   const report = await nativeCommand("call.done");
-  await chrome.storage.session.set({ lastReport: report });
+  // Keep the tab binding so a correction round can reuse the same conversation.
+  const lastHandoff = stored.handoff
+    ? { tabId: stored.handoff.tabId, exchangeId: stored.handoff.exchangeId }
+    : null;
+  await chrome.storage.session.set({ lastReport: report, lastHandoff });
   await chrome.storage.session.remove(["handoff", "downloadTracker"]);
   return report;
 }

@@ -232,6 +232,25 @@ After deterministic validation, Codex or Claude Code must:
 
 ChatGPT Web output remains advisory. Sina retains final authority.
 
+## Correction rounds
+
+When validation reports `INCOMPLETE`, the cause is usually mechanical rather than intellectual: a declared SHA-256 that does not match the delivered bytes, an artifact named in the manifest but never downloaded, a `PARTIAL` status, or a `delivery` list that omits a created file. Reasoning again from scratch is the wrong response to that.
+
+A correction round diagnoses the exact defects and sends them back into the same conversation.
+
+1. `.\gptwebcall.cmd defects --exchange <exchange_id>` lists every defect as a structured record with `kind`, `target`, `expected`, and `observed`. It reads only; it changes nothing.
+2. The side panel's **Send correction round** button calls `call.repair`. The companion writes `repair\ROUND_N_PROMPT.txt` and `repair\ROUND_N_DEFECTS.json` inside the exchange, records the round in the manifest, and re-arms monitoring with a fresh download baseline.
+3. The extension types the correction prompt into the composer of the bound tab and stops. It never presses Send. Sina reviews the prompt and sends it. If the composer cannot be found, the prompt is still written to disk and shown in the side panel with a copy control.
+4. ChatGPT returns corrected files into the same conversation. Files that already validated are left alone.
+5. Click **Done and validate** again.
+
+Rules:
+
+- A correction round is refused when the response has no defects.
+- Corrected files never overwrite earlier bytes silently. A superseded file is moved to `response\superseded\round<N>\` before the replacement is stored, so every round remains auditable.
+- Rounds accumulate. `repair_round` and a `repairs` array in the exchange manifest record what was wrong and when.
+- The request ID never changes across correction rounds. Correcting a delivery is not the same as reasoning again; when the *reasoning* is wrong, create a new correction call with a new request ID as described under failure and correction rules.
+
 ## Command reference
 
 ```powershell
@@ -242,6 +261,8 @@ ChatGPT Web output remains advisory. Sina retains final authority.
 .\gptwebcall.cmd done
 .\gptwebcall.cmd stop
 .\gptwebcall.cmd validate --exchange <exchange_id>
+.\gptwebcall.cmd defects --exchange <exchange_id>
+.\gptwebcall.cmd repair --exchange <exchange_id> --tab <tab_id>
 ```
 
 - `prepare`: snapshot and hash one new call package.
@@ -251,6 +272,8 @@ ChatGPT Web output remains advisory. Sina retains final authority.
 - `done`: stop and deterministically validate the active call without the extension.
 - `stop`: abandon the active call and record `STOPPED` without deleting evidence.
 - `validate`: validate files manually placed into a non-active prepared or incomplete exchange.
+- `defects`: report every validation defect in a delivered response without changing anything.
+- `repair`: open a correction round, write its prompt and defect record, and re-arm monitoring.
 
 ## Restart and interruption recovery
 
@@ -291,6 +314,7 @@ See `docs\MANUAL_FALLBACK.md` for the concise operator checklist.
 - Missing main JSON, missing artifact, invalid hash/size, wrong request ID, `PARTIAL`, or `BLOCKED` produces `INCOMPLETE`; never describe it as successful.
 - Unrelated downloads remain where the browser saved them.
 - If only transport was incomplete, recover the missing exact files and rerun `validate` on the incomplete exchange.
+- If the delivery itself is malformed, run a correction round rather than a new call. Correction rounds fix mechanical delivery defects inside the same conversation and keep the same request ID.
 - If ChatGPT must reason again, create a new correction call with a new request ID. Include the original request, returned work, identified defect, and exact correction required. Preserve the original exchange unchanged.
 - Do not silently edit returned evidence to make validation pass.
 - Never execute returned scripts, binaries, archives, macros, or documents with active content merely because validation passed.
