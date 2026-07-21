@@ -38,6 +38,31 @@ export function completedTrackedDownload(active, trackedIds, delta) {
   );
 }
 
+function handoffList(handoffs) {
+  if (Array.isArray(handoffs)) {
+    return handoffs;
+  }
+  return handoffs && typeof handoffs === "object" ? Object.values(handoffs) : [];
+}
+
+/**
+ * Several calls can be monitoring at once. A download is worth submitting when
+ * any of them could legitimately own it; the companion decides which one does.
+ */
+export function anyShouldObserveDownload(handoffs, downloadItem) {
+  return handoffList(handoffs).some((one) => shouldObserveDownload(one, downloadItem));
+}
+
+export function anyCompletedTrackedDownload(handoffs, trackedIds, delta) {
+  return handoffList(handoffs).some(
+    (one) => completedTrackedDownload(one, trackedIds, delta),
+  );
+}
+
+export function handoffForTab(handoffs, tabId) {
+  return handoffList(handoffs).find((one) => one?.tabId === tabId) ?? null;
+}
+
 export function claimCompletedDownload(tracker, downloadId) {
   if (
     !tracker

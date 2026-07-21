@@ -8,6 +8,7 @@ from pathlib import Path
 from companion.core import (
     list_ready_calls,
     load_active_call,
+    load_active_calls,
     prepare_call,
     resume_call,
     start_call,
@@ -43,11 +44,11 @@ class CoreTests(unittest.TestCase):
             path.write_text(value, encoding="utf-8")
         return path
 
-    def spec(self, subject="Fixture call"):
+    def spec(self, subject="Fixture call", expected_main_json="result.json"):
         return {
             "subject": subject,
             "request_id": "request_fixture",
-            "expected_main_json": "result.json",
+            "expected_main_json": expected_main_json,
             "prompt_text": "Follow this request and return files only.\n",
             "input_files": [
                 {"path": str(self.request), "filename": self.request.name},
@@ -156,13 +157,95 @@ class CoreTests(unittest.TestCase):
         self.assertEqual(active["tab_id"], 11)
         self.assertEqual(active["download_baseline"], [2, 4])
         self.assertEqual(load_active_call(self.root), active)
-        with self.assertRaisesRegex(RuntimeError, "already active"):
-            start_call(self.root, second["exchange_id"], 12, [])
+        with self.assertRaisesRegex(RuntimeError, "not prepared"):
+            start_call(self.root, first["exchange_id"], 12, [])
 
         remaining = list_ready_calls(self.root)
         self.assertEqual(
             [item["exchange_id"] for item in remaining], [second["exchange_id"]]
         )
+
+    def test_two_calls_run_at_once_when_their_main_json_names_differ(self):
+        first = prepare_call(self.root, self.spec(subject="First"), self.now)
+        second = prepare_call(
+            self.root,
+            self.spec(subject="Second", expected_main_json="second_result.json"),
+            self.now + timedelta(minutes=1),
+        )
+
+        start_call(self.root, first["exchange_id"], 11, [])
+        start_call(self.root, second["exchange_id"], 12, [])
+
+        running = load_active_calls(self.root)
+        self.assertEqual(
+            sorted(item["exchange_id"] for item in running),
+            sorted([first["exchange_id"], second["exchange_id"]]),
+        )
+        self.assertEqual(
+            load_active_call(self.root, second["exchange_id"])["tab_id"], 12
+        )
+
+    def test_a_second_call_cannot_reuse_the_same_main_json_name(self):
+        first = prepare_call(self.root, self.spec(subject="First"), self.now)
+        second = prepare_call(
+            self.root, self.spec(subject="Second"), self.now + timedelta(minutes=1)
+        )
+        start_call(self.root, first["exchange_id"], 11, [])
+
+        with self.assertRaisesRegex(RuntimeError, "expected_main_json"):
+            start_call(self.root, second["exchange_id"], 12, [])
+
+    def test_a_second_call_cannot_reuse_a_bound_tab(self):
+        first = prepare_call(self.root, self.spec(subject="First"), self.now)
+        second = prepare_call(
+            self.root,
+            self.spec(subject="Second", expected_main_json="second_result.json"),
+            self.now + timedelta(minutes=1),
+        )
+        start_call(self.root, first["exchange_id"], 11, [])
+
+        with self.assertRaisesRegex(RuntimeError, "tab 11 is already bound"):
+            start_call(self.root, second["exchange_id"], 11, [])
+
+    def test_load_active_call_refuses_to_guess_between_running_calls(self):
+        first = prepare_call(self.root, self.spec(subject="First"), self.now)
+        second = prepare_call(
+            self.root,
+            self.spec(subject="Second", expected_main_json="second_result.json"),
+            self.now + timedelta(minutes=1),
+        )
+        start_call(self.root, first["exchange_id"], 11, [])
+        start_call(self.root, second["exchange_id"], 12, [])
+
+        with self.assertRaisesRegex(RuntimeError, "several calls are active"):
+            load_active_call(self.root)
+
+    def test_stopping_one_call_leaves_the_other_running(self):
+        first = prepare_call(self.root, self.spec(subject="First"), self.now)
+        second = prepare_call(
+            self.root,
+            self.spec(subject="Second", expected_main_json="second_result.json"),
+            self.now + timedelta(minutes=1),
+        )
+        start_call(self.root, first["exchange_id"], 11, [])
+        start_call(self.root, second["exchange_id"], 12, [])
+
+        stop_call(self.root, first["exchange_id"])
+
+        running = load_active_calls(self.root)
+        self.assertEqual([item["exchange_id"] for item in running], [second["exchange_id"]])
+
+    def test_a_legacy_single_call_record_is_migrated(self):
+        call = prepare_call(self.root, self.spec(), self.now)
+        active = start_call(self.root, call["exchange_id"], 11, [1])
+        (self.root / "state" / "active" / f"{call['exchange_id']}.json").unlink()
+        legacy = self.root / "state" / "ACTIVE_CALL.json"
+        legacy.write_text(json.dumps(active) + "\n", encoding="utf-8")
+
+        running = load_active_calls(self.root)
+
+        self.assertEqual([item["exchange_id"] for item in running], [call["exchange_id"]])
+        self.assertFalse(legacy.exists())
 
     def test_stop_call_records_stop_before_clearing_active_state(self):
         call = prepare_call(self.root, self.spec(), self.now)
@@ -182,7 +265,7 @@ class CoreTests(unittest.TestCase):
         call = prepare_call(self.root, self.spec(), self.now)
         active = start_call(self.root, call["exchange_id"], 11, [1, 2])
         active["observed_download_ids"] = [3]
-        (self.root / "state" / "ACTIVE_CALL.json").write_text(
+        (self.root / "state" / "active" / f"{call['exchange_id']}.json").write_text(
             json.dumps(active) + "\n", encoding="utf-8"
         )
 

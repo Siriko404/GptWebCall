@@ -1,49 +1,23 @@
 const select = document.querySelector("#call-select");
 const summary = document.querySelector("#call-summary");
 const status = document.querySelector("#status");
+const running = document.querySelector("#running");
 const attachments = document.querySelector("#attachments");
 const goButton = document.querySelector("#go-button");
 const resumeButton = document.querySelector("#resume-button");
-const doneButton = document.querySelector("#done-button");
-const stopButton = document.querySelector("#stop-button");
 const repairButton = document.querySelector("#repair-button");
 const repairCard = document.querySelector("#repair-card");
 const repairPrompt = document.querySelector("#repair-prompt");
 const copyRepairButton = document.querySelector("#copy-repair-button");
 const validationReport = document.querySelector("#validation-report");
 
+let repairTarget = null;
+
 
 goButton.addEventListener("click", async () => {
   setBusy(true);
   try {
-    const response = await send({ type: "GO", exchangeId: select.value });
-    renderHandoff(response);
-  } catch (error) {
-    status.textContent = error.message;
-  } finally {
-    setBusy(false);
-  }
-});
-
-
-stopButton.addEventListener("click", async () => {
-  setBusy(true);
-  try {
-    await send({ type: "STOP" });
-    await refresh();
-  } catch (error) {
-    status.textContent = error.message;
-  } finally {
-    setBusy(false);
-  }
-});
-
-
-doneButton.addEventListener("click", async () => {
-  setBusy(true);
-  try {
-    const report = await send({ type: "DONE" });
-    renderReport(report);
+    await send({ type: "GO", exchangeId: select.value });
     await refresh();
   } catch (error) {
     status.textContent = error.message;
@@ -56,8 +30,8 @@ doneButton.addEventListener("click", async () => {
 resumeButton.addEventListener("click", async () => {
   setBusy(true);
   try {
-    const handoff = await send({ type: "RESUME" });
-    renderHandoff(handoff);
+    await send({ type: "RESUME" });
+    await refresh();
   } catch (error) {
     status.textContent = error.message;
   } finally {
@@ -69,8 +43,9 @@ resumeButton.addEventListener("click", async () => {
 repairButton.addEventListener("click", async () => {
   setBusy(true);
   try {
-    const handoff = await send({ type: "REPAIR" });
-    renderHandoff(handoff);
+    const handoff = await send({ type: "REPAIR", exchangeId: repairTarget });
+    showRepairPrompt(handoff);
+    await refresh();
   } catch (error) {
     status.textContent = error.message;
   } finally {
@@ -83,7 +58,7 @@ copyRepairButton.addEventListener("click", async () => {
   try {
     await navigator.clipboard.writeText(repairPrompt.textContent);
     copyRepairButton.textContent = "Copied";
-  } catch (error) {
+  } catch (_error) {
     copyRepairButton.textContent = "Copy failed";
   }
 });
@@ -99,7 +74,7 @@ select.addEventListener("change", () => {
 
 chrome.runtime.onMessage.addListener((message) => {
   if (message?.type === "HANDOFF_STATUS") {
-    renderHandoff(message.handoff);
+    refresh();
   }
 });
 
@@ -108,21 +83,15 @@ async function refresh() {
   try {
     const state = await send({ type: "GET_STATUS" });
     renderReady(state.ready);
+    renderRunning(state.handoffs, state.active);
+    repairTarget = state.repairExchangeId;
     repairButton.hidden = !state.canRepair;
-    if (state.handoff) {
-      renderHandoff(state.handoff);
-      repairButton.hidden = !state.canRepair;
-    } else if (state.active) {
-      status.textContent = "A call is active. Stop it or resume after reopening Chrome.";
-      stopButton.hidden = false;
-      doneButton.hidden = false;
-      resumeButton.hidden = false;
-      goButton.disabled = true;
-    } else {
-      status.textContent = "Ready.";
-      stopButton.hidden = true;
-      doneButton.hidden = true;
-      resumeButton.hidden = true;
+    resumeButton.hidden = !(state.active?.length && state.handoffs.length === 0);
+    if (state.handoffs.length === 0) {
+      status.textContent = state.active?.length
+        ? "A call is active but this Chrome session lost its tab. Resume it."
+        : "Ready.";
+      attachments.replaceChildren();
     }
     renderReport(state.lastReport);
   } catch (error) {
@@ -146,24 +115,75 @@ function renderReady(ready) {
 }
 
 
-function renderHandoff(handoff) {
-  status.textContent = handoff.message;
+function renderRunning(handoffs, active) {
+  running.replaceChildren();
+  if (handoffs.length === 0) {
+    return;
+  }
+  status.textContent = `${handoffs.length} call${handoffs.length === 1 ? "" : "s"} in flight.`;
   attachments.replaceChildren();
-  for (const name of handoff.attachmentNames ?? []) {
-    const item = document.createElement("li");
-    item.textContent = name;
-    attachments.append(item);
+  for (const handoff of handoffs) {
+    running.append(runningRow(handoff));
   }
-  goButton.disabled = true;
-  doneButton.hidden = false;
-  resumeButton.hidden = true;
-  stopButton.hidden = false;
-  if (handoff.repairPrompt) {
-    repairPrompt.textContent = handoff.repairPrompt;
-    repairCard.hidden = false;
-    copyRepairButton.textContent = "Copy prompt";
-    repairButton.hidden = true;
+  const armed = handoffs.find((one) => one.armed);
+  if (armed) {
+    for (const name of armed.attachmentNames ?? []) {
+      const item = document.createElement("li");
+      item.textContent = name;
+      attachments.append(item);
+    }
   }
+}
+
+
+function runningRow(handoff) {
+  const row = document.createElement("div");
+  row.className = "summary";
+
+  const title = document.createElement("div");
+  title.textContent = handoff.exchangeId;
+  row.append(title);
+
+  const detail = document.createElement("div");
+  detail.textContent = handoff.message ?? handoff.status;
+  row.append(detail);
+
+  row.append(actionButton("Done and validate", "primary", { type: "DONE", exchangeId: handoff.exchangeId }));
+  row.append(actionButton("Stop", "secondary", { type: "STOP", exchangeId: handoff.exchangeId }));
+  return row;
+}
+
+
+function actionButton(label, className, message) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = className;
+  button.textContent = label;
+  button.addEventListener("click", async () => {
+    setBusy(true);
+    try {
+      const result = await send(message);
+      if (message.type === "DONE") {
+        renderReport(result);
+      }
+      await refresh();
+    } catch (error) {
+      status.textContent = error.message;
+    } finally {
+      setBusy(false);
+    }
+  });
+  return button;
+}
+
+
+function showRepairPrompt(handoff) {
+  if (!handoff?.repairPrompt) {
+    return;
+  }
+  repairPrompt.textContent = handoff.repairPrompt;
+  repairCard.hidden = false;
+  copyRepairButton.textContent = "Copy prompt";
 }
 
 
@@ -189,10 +209,11 @@ function renderReport(report) {
 
 function setBusy(busy) {
   goButton.disabled = busy || select.options.length === 0;
-  stopButton.disabled = busy;
-  doneButton.disabled = busy;
   resumeButton.disabled = busy;
   repairButton.disabled = busy;
+  for (const button of running.querySelectorAll("button")) {
+    button.disabled = busy;
+  }
 }
 
 

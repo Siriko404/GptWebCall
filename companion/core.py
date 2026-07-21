@@ -10,6 +10,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from companion.lock import state_lock
+
 
 _TIMESTAMP = "%Y-%m-%d_%H%M%S"
 _RESERVED_NAMES = {
@@ -149,10 +151,7 @@ def start_call(
     download_baseline: list[int],
 ) -> dict[str, Any]:
     root = Path(root).resolve()
-    active_path = _active_path(root)
-    if active_path.exists():
-        raise RuntimeError("another call is already active")
-    if not isinstance(tab_id, int) or tab_id < 0:
+    if not isinstance(tab_id, int) or isinstance(tab_id, bool) or tab_id < 0:
         raise ValueError("tab_id must be a non-negative integer")
     if not isinstance(download_baseline, list) or any(
         not isinstance(item, int) or item < 0 for item in download_baseline
@@ -167,44 +166,77 @@ def start_call(
     if manifest.get("state") != "PREPARED":
         raise RuntimeError("call is not prepared")
 
-    active = {
-        "exchange_id": exchange_id,
-        "exchange_path": str(exchange_dir),
-        "request_id": manifest["request_id"],
-        "tab_id": tab_id,
-        "started_at": datetime.now(timezone.utc).isoformat(),
-        "monitoring": True,
-        "download_baseline": sorted(set(download_baseline)),
-        "observed_download_ids": [],
-        "collected_files": [],
-        "pending_downloads": [],
-    }
-    manifest["state"] = "ACTIVE"
-    _write_json_atomic(active_path, active)
-    try:
-        _write_json_atomic(manifest_path, manifest)
-    except BaseException:
-        active_path.unlink(missing_ok=True)
-        raise
+    with state_lock(root):
+        _assert_can_run_alongside(root, exchange_id, tab_id, manifest)
+        active = {
+            "exchange_id": exchange_id,
+            "exchange_path": str(exchange_dir),
+            "request_id": manifest["request_id"],
+            "expected_main_json": manifest["expected_main_json"],
+            "tab_id": tab_id,
+            "started_at": datetime.now(timezone.utc).isoformat(),
+            "monitoring": True,
+            "download_baseline": sorted(set(download_baseline)),
+            "observed_download_ids": [],
+            "collected_files": [],
+        }
+        active_path = _active_path_for(root, exchange_id)
+        manifest["state"] = "ACTIVE"
+        _write_json_atomic(active_path, active)
+        try:
+            _write_json_atomic(manifest_path, manifest)
+        except BaseException:
+            active_path.unlink(missing_ok=True)
+            raise
     return active
 
 
-def load_active_call(root: Path) -> dict[str, Any] | None:
-    path = _active_path(Path(root).resolve())
-    if not path.exists():
+def load_active_calls(root: Path) -> list[dict[str, Any]]:
+    """Return every active call, oldest exchange first."""
+    root = Path(root).resolve()
+    _migrate_legacy_active(root)
+    active_dir = _active_dir(root)
+    if not active_dir.is_dir():
+        return []
+    records = [
+        _read_json_object(path, "ACTIVE_CALL")
+        for path in sorted(active_dir.glob("*.json"))
+    ]
+    return sorted(records, key=lambda item: str(item.get("exchange_id", "")))
+
+
+def load_active_call(
+    root: Path, exchange_id: str | None = None
+) -> dict[str, Any] | None:
+    """Return one active call.
+
+    With no exchange_id this returns the single active call when exactly one is
+    running, which keeps single-call callers and the manual fallback simple. It
+    refuses to guess when several calls are running.
+    """
+    records = load_active_calls(root)
+    if exchange_id is not None:
+        for record in records:
+            if record.get("exchange_id") == exchange_id:
+                return record
         return None
-    return _read_json_object(path, "ACTIVE_CALL")
+    if not records:
+        return None
+    if len(records) > 1:
+        raise RuntimeError(
+            "several calls are active; name one with --exchange: "
+            + ", ".join(str(record.get("exchange_id")) for record in records)
+        )
+    return records[0]
 
 
 def resume_call(
     root: Path,
     tab_id: int,
     download_baseline: list[int],
+    exchange_id: str | None = None,
 ) -> dict[str, Any]:
     root = Path(root).resolve()
-    active = load_active_call(root)
-    if active is None:
-        raise RuntimeError("no call is active")
     if not isinstance(tab_id, int) or isinstance(tab_id, bool) or tab_id < 0:
         raise ValueError("tab_id must be a non-negative integer")
     if not isinstance(download_baseline, list) or any(
@@ -212,27 +244,91 @@ def resume_call(
         for item in download_baseline
     ):
         raise ValueError("download_baseline must contain non-negative integers")
-    active["tab_id"] = tab_id
-    active["started_at"] = datetime.now(timezone.utc).isoformat()
-    active["monitoring"] = True
-    active["download_baseline"] = sorted(set(download_baseline))
-    _write_json_atomic(_active_path(root), active)
+    with state_lock(root):
+        active = load_active_call(root, exchange_id)
+        if active is None:
+            raise RuntimeError("no call is active")
+        for other in load_active_calls(root):
+            if (
+                other.get("exchange_id") != active["exchange_id"]
+                and other.get("tab_id") == tab_id
+            ):
+                raise RuntimeError(
+                    f"tab {tab_id} is already bound to call {other['exchange_id']}"
+                )
+        active["tab_id"] = tab_id
+        active["started_at"] = datetime.now(timezone.utc).isoformat()
+        active["monitoring"] = True
+        active["download_baseline"] = sorted(set(download_baseline))
+        _write_json_atomic(_active_path_for(root, active["exchange_id"]), active)
     return active
 
 
-def stop_call(root: Path) -> dict[str, Any]:
+def stop_call(root: Path, exchange_id: str | None = None) -> dict[str, Any]:
     root = Path(root).resolve()
-    active = load_active_call(root)
-    if active is None:
-        raise RuntimeError("no call is active")
-    manifest_path = (
-        _exchange_dir(root, active["exchange_id"]) / "EXCHANGE_MANIFEST.json"
-    )
-    manifest = _read_json_object(manifest_path, "EXCHANGE_MANIFEST")
-    manifest["state"] = "STOPPED"
-    _write_json_atomic(manifest_path, manifest)
-    _active_path(root).unlink()
+    with state_lock(root):
+        active = load_active_call(root, exchange_id)
+        if active is None:
+            raise RuntimeError("no call is active")
+        manifest_path = (
+            _exchange_dir(root, active["exchange_id"]) / "EXCHANGE_MANIFEST.json"
+        )
+        manifest = _read_json_object(manifest_path, "EXCHANGE_MANIFEST")
+        manifest["state"] = "STOPPED"
+        _write_json_atomic(manifest_path, manifest)
+        _active_path_for(root, active["exchange_id"]).unlink(missing_ok=True)
     return manifest
+
+
+def _assert_can_run_alongside(
+    root: Path, exchange_id: str, tab_id: int, manifest: dict[str, Any]
+) -> None:
+    """Refuse a new call that another active call could be confused with.
+
+    Downloads are routed by filename, so two concurrent calls must never expect
+    the same main JSON name. Tabs are the attachment binding, so one tab may
+    drive only one call.
+    """
+    expected_main = str(manifest["expected_main_json"]).casefold()
+    for other in load_active_calls(root):
+        if other.get("exchange_id") == exchange_id:
+            raise RuntimeError("this call is already active")
+        if other.get("tab_id") == tab_id:
+            raise RuntimeError(
+                f"tab {tab_id} is already bound to call {other['exchange_id']}"
+            )
+        if str(other.get("expected_main_json", "")).casefold() == expected_main:
+            raise RuntimeError(
+                "another active call already expects "
+                f"{manifest['expected_main_json']}; concurrent calls need distinct "
+                "expected_main_json names so downloads can be routed"
+            )
+
+
+def _active_dir(root: Path) -> Path:
+    return root / "state" / "active"
+
+
+def _active_path_for(root: Path, exchange_id: str) -> Path:
+    if not re.fullmatch(r"[0-9A-Za-z_-]+", exchange_id):
+        raise ValueError("exchange_id is unsafe")
+    return _active_dir(root) / f"{exchange_id}.json"
+
+
+def _migrate_legacy_active(root: Path) -> None:
+    """Move a single-call ACTIVE_CALL.json into the multi-call directory."""
+    legacy = _active_path(root)
+    if not legacy.is_file():
+        return
+    record = _read_json_object(legacy, "ACTIVE_CALL")
+    exchange_id = str(record.get("exchange_id", ""))
+    if not exchange_id:
+        legacy.unlink(missing_ok=True)
+        return
+    target = _active_path_for(root, exchange_id)
+    if not target.exists():
+        _write_json_atomic(target, record)
+    legacy.unlink(missing_ok=True)
 
 
 def request_paths(root: Path, exchange_id: str) -> list[str]:

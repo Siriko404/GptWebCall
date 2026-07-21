@@ -10,7 +10,7 @@
     <main>
       <header>
         <p class="eyebrow">GPT WEB CALL</p>
-        <h1>One call at a time</h1>
+        <h1>Calls in flight</h1>
         <p class="subtitle">You control Attach, Send, downloads, and Done.</p>
       </header>
 
@@ -24,12 +24,11 @@
       <section class="card">
         <h2>Status</h2>
         <p id="status" class="status">Connecting to the local companion…</p>
+        <div id="running"></div>
         <ul id="attachments" class="file-list"></ul>
         <div id="validation-report" class="report" hidden></div>
         <button id="resume-button" class="primary" type="button" hidden>Resume attachment</button>
-        <button id="done-button" class="primary" type="button" hidden>Done and validate</button>
         <button id="repair-button" class="primary" type="button" hidden>Send correction round</button>
-        <button id="stop-button" class="secondary" type="button" hidden>Stop call</button>
       </section>
 
       <section id="repair-card" class="card" hidden>

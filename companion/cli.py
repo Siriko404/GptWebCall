@@ -11,7 +11,7 @@ from companion.core import (
     _exchange_dir,
     _read_json_object,
     list_ready_calls,
-    load_active_call,
+    load_active_calls,
     prepare_call,
     stop_call,
 )
@@ -44,11 +44,15 @@ def run(
                 exchange / "EXCHANGE_MANIFEST.json", "EXCHANGE_MANIFEST"
             )
         elif command == "active":
-            result = load_active_call(root)
+            records = load_active_calls(root)
+            if not records:
+                result = None
+            else:
+                result = records[0] if len(records) == 1 else records
         elif command == "done":
-            result = finish_call(root)
+            result = finish_call(root, options.exchange)
         elif command == "stop":
-            result = stop_call(root)
+            result = stop_call(root, options.exchange)
         elif command == "validate":
             result = finalize_exchange(root, options.exchange)
         elif command == "defects":
@@ -90,8 +94,10 @@ def _parser() -> argparse.ArgumentParser:
     show = subcommands.add_parser("show", exit_on_error=False)
     show.add_argument("--exchange", required=True)
     subcommands.add_parser("active", exit_on_error=False)
-    subcommands.add_parser("done", exit_on_error=False)
-    subcommands.add_parser("stop", exit_on_error=False)
+    done = subcommands.add_parser("done", exit_on_error=False)
+    done.add_argument("--exchange", default=None)
+    stop = subcommands.add_parser("stop", exit_on_error=False)
+    stop.add_argument("--exchange", default=None)
     validate = subcommands.add_parser("validate", exit_on_error=False)
     validate.add_argument("--exchange", required=True)
     defects = subcommands.add_parser("defects", exit_on_error=False)

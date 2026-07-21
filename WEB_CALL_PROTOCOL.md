@@ -17,7 +17,20 @@ After reading this file, a new session must:
 7. Treat the returned work as advisory even after deterministic file validation passes.
 8. Preserve each exchange and record accepted conclusions in the external project's own ledger or artifacts.
 
-There is one active call globally. The system is intentionally filesystem-only; `calls\`, `state\`, request snapshots, response files, manifests, and validation reports preserve continuity across sessions and compaction.
+Several calls may be active at once, each bound to its own ChatGPT tab. A single-call workflow remains the common case, and every command that acts on one active call still works without naming it when exactly one active call exists. The system is intentionally filesystem-only; `calls\`, `state\`, request snapshots, response files, manifests, and validation reports preserve continuity across sessions and compaction.
+
+## Parallel calls
+
+Chrome does not tell an extension which tab produced a download, so downloads are attributed by filename. Everything else follows from that.
+
+- Each active call is bound to one tab. A tab may drive only one call.
+- Two active calls may never expect the same `expected_main_json`. `call.go` refuses the second one, naming the conflict.
+- Artifact filenames must also be unique across calls running at the same time. When two calls both list the same artifact name, the companion reports `AMBIGUOUS` and moves nothing rather than guessing.
+- An artifact downloaded before any main JSON waits in a shared pending pool and is released to whichever call's main JSON later names it.
+- `done`, `stop`, and `repair` take `--exchange`. With exactly one active call the flag may be omitted; with several, omitting it is an error rather than a guess.
+- Each armed tab shows Chrome's "being debugged" banner until its files are attached.
+
+The practical rule when preparing a batch: give every call in the batch a distinct, descriptive `expected_main_json` and distinct artifact names. Prefix them with the pass name.
 
 ## Triage
 
@@ -259,7 +272,9 @@ Rules:
 .\gptwebcall.cmd show --exchange <exchange_id>
 .\gptwebcall.cmd active
 .\gptwebcall.cmd done
+.\gptwebcall.cmd done --exchange <exchange_id>
 .\gptwebcall.cmd stop
+.\gptwebcall.cmd stop --exchange <exchange_id>
 .\gptwebcall.cmd validate --exchange <exchange_id>
 .\gptwebcall.cmd defects --exchange <exchange_id>
 .\gptwebcall.cmd repair --exchange <exchange_id> --tab <tab_id>
@@ -268,9 +283,9 @@ Rules:
 - `prepare`: snapshot and hash one new call package.
 - `list`: list calls currently in `PREPARED` state.
 - `show`: read one exchange manifest.
-- `active`: show the active-call record or `null`.
-- `done`: stop and deterministically validate the active call without the extension.
-- `stop`: abandon the active call and record `STOPPED` without deleting evidence.
+- `active`: show the active-call record, or the list of them when several are running, or `null`.
+- `done`: stop and deterministically validate one active call without the extension.
+- `stop`: abandon one active call and record `STOPPED` without deleting evidence.
 - `validate`: validate files manually placed into a non-active prepared or incomplete exchange.
 - `defects`: report every validation defect in a delivered response without changing anything.
 - `repair`: open a correction round, write its prompt and defect record, and re-arm monitoring.
@@ -283,7 +298,7 @@ If Chrome or the extension restarts while a call is active:
 - After Sina sent the request: do not resend it blindly. Download the outputs, place them manually if monitoring was lost, then use `done` for the active exchange.
 - To abandon the interrupted call: use the side-panel Stop action or `.\gptwebcall.cmd stop`.
 
-Always run `.\gptwebcall.cmd active` before recovery. Never create or start a second active call.
+Always run `.\gptwebcall.cmd active` before recovery, and recover one exchange at a time by naming it with `--exchange`. Never start a second call against a tab that is already bound.
 
 ## Manual fallback
 

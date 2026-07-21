@@ -10,7 +10,7 @@ from typing import Any, BinaryIO
 
 from companion.core import (
     list_ready_calls,
-    load_active_call,
+    load_active_calls,
     request_paths,
     resume_call,
     start_call,
@@ -25,6 +25,7 @@ ALLOWED_COMMANDS = {
     "health",
     "calls.list_ready",
     "call.active",
+    "calls.active",
     "call.go",
     "call.resume",
     "download.completed",
@@ -87,7 +88,11 @@ def dispatch(root: Path, message: dict[str, Any]) -> dict[str, Any] | list[Any] 
         return list_ready_calls(root)
     if command == "call.active":
         _require_keys(payload, set())
-        return load_active_call(root)
+        records = load_active_calls(root)
+        return records[0] if len(records) == 1 else None
+    if command == "calls.active":
+        _require_keys(payload, set())
+        return load_active_calls(root)
     if command == "call.go":
         _require_keys(payload, {"exchange_id", "tab_id", "download_baseline"})
         exchange_id = _required_string(payload, "exchange_id")
@@ -102,11 +107,12 @@ def dispatch(root: Path, message: dict[str, Any]) -> dict[str, Any] | list[Any] 
             "request_paths": request_paths(root, exchange_id),
         }
     if command == "call.resume":
-        _require_keys(payload, {"tab_id", "download_baseline"})
+        _allow_keys(payload, {"tab_id", "download_baseline"}, {"exchange_id"})
         active = resume_call(
             root,
             _required_integer(payload, "tab_id"),
             _integer_list(payload, "download_baseline"),
+            _optional_string(payload, "exchange_id"),
         )
         return {
             "active": active,
@@ -129,9 +135,13 @@ def dispatch(root: Path, message: dict[str, Any]) -> dict[str, Any] | list[Any] 
         _required_string(payload, "filename")
         return handle_completed_download(root, payload)
     if command == "call.done":
-        _require_keys(payload, set())
-        if load_active_call(root) is not None:
-            return finish_call(root)
+        _allow_keys(payload, set(), {"exchange_id"})
+        exchange_id = _optional_string(payload, "exchange_id")
+        if any(
+            record.get("exchange_id") == exchange_id or exchange_id is None
+            for record in load_active_calls(root)
+        ):
+            return finish_call(root, exchange_id)
         last_result = root / "state" / "LAST_RESULT.json"
         if not last_result.is_file():
             raise RuntimeError("no call is active and no prior result exists")
@@ -146,8 +156,8 @@ def dispatch(root: Path, message: dict[str, Any]) -> dict[str, Any] | list[Any] 
             _integer_list(payload, "download_baseline"),
         )
     if command == "call.stop":
-        _require_keys(payload, set())
-        return stop_call(root)
+        _allow_keys(payload, set(), {"exchange_id"})
+        return stop_call(root, _optional_string(payload, "exchange_id"))
     raise AssertionError(f"unhandled command: {command}")
 
 
@@ -175,6 +185,22 @@ def _require_keys(payload: dict[str, Any], required: set[str]) -> None:
         missing = sorted(required - keys)
         extra = sorted(keys - required)
         raise ValueError(f"payload fields do not match; missing={missing} extra={extra}")
+
+
+def _allow_keys(
+    payload: dict[str, Any], required: set[str], optional: set[str]
+) -> None:
+    keys = set(payload)
+    missing = sorted(required - keys)
+    extra = sorted(keys - required - optional)
+    if missing or extra:
+        raise ValueError(f"payload fields do not match; missing={missing} extra={extra}")
+
+
+def _optional_string(payload: dict[str, Any], name: str) -> str | None:
+    if name not in payload:
+        return None
+    return _required_string(payload, name)
 
 
 def _required_string(payload: dict[str, Any], name: str) -> str:

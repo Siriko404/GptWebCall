@@ -80,6 +80,7 @@ class NativeHostTests(unittest.TestCase):
                 "health",
                 "calls.list_ready",
                 "call.active",
+                "calls.active",
                 "call.go",
                 "call.resume",
                 "download.completed",

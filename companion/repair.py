@@ -20,14 +20,16 @@ from pathlib import Path
 from typing import Any
 
 from companion.core import (
-    _active_path,
+    _active_path_for,
     _exchange_dir,
     _read_json_object,
     _safe_name,
     _sha256,
     _write_json_atomic,
     load_active_call,
+    load_active_calls,
 )
+from companion.lock import state_lock
 
 REPAIRABLE_STATES = {"ACTIVE", "INCOMPLETE", "COMPLETE"}
 
@@ -185,9 +187,13 @@ def open_repair_round(
     if state not in REPAIRABLE_STATES:
         raise RuntimeError(f"exchange cannot be repaired from state {state}")
 
-    active = load_active_call(root)
-    if active is not None and active.get("exchange_id") != exchange_id:
-        raise RuntimeError("another call is already active")
+    active = load_active_call(root, exchange_id)
+    if tab_id is not None:
+        for other in load_active_calls(root):
+            if other.get("exchange_id") != exchange_id and other.get("tab_id") == tab_id:
+                raise RuntimeError(
+                    f"tab {tab_id} is already bound to call {other['exchange_id']}"
+                )
 
     defects = collect_defects(exchange)
     if not defects:
@@ -226,6 +232,7 @@ def open_repair_round(
         "exchange_id": exchange_id,
         "exchange_path": str(exchange),
         "request_id": manifest["request_id"],
+        "expected_main_json": manifest["expected_main_json"],
         "tab_id": resolved_tab,
         "started_at": opened_at,
         "monitoring": True,
@@ -233,7 +240,6 @@ def open_repair_round(
         "download_baseline": baseline,
         "observed_download_ids": [],
         "collected_files": list(active.get("collected_files", [])) if active else [],
-        "pending_downloads": [],
     }
     manifest["state"] = "ACTIVE"
     manifest["repair_round"] = round_number
@@ -247,12 +253,14 @@ def open_repair_round(
             "defects_file": defects_path.name,
         }
     )
-    _write_json_atomic(_active_path(root), reopened)
-    try:
-        _write_json_atomic(manifest_path, manifest)
-    except BaseException:
-        _active_path(root).unlink(missing_ok=True)
-        raise
+    active_path = _active_path_for(root, exchange_id)
+    with state_lock(root):
+        _write_json_atomic(active_path, reopened)
+        try:
+            _write_json_atomic(manifest_path, manifest)
+        except BaseException:
+            active_path.unlink(missing_ok=True)
+            raise
     return {
         "exchange_id": exchange_id,
         "round": round_number,

@@ -3,9 +3,10 @@ import {
   buildFileAssignment,
 } from "./lib/attachment.js";
 import {
+  anyCompletedTrackedDownload,
+  anyShouldObserveDownload,
   claimCompletedDownload,
-  completedTrackedDownload,
-  shouldObserveDownload,
+  handoffForTab,
 } from "./lib/downloads.js";
 
 
@@ -36,23 +37,19 @@ chrome.debugger.onEvent.addListener((source, method, params) => {
     return;
   }
   completeAttachment(source, params).catch(async (error) => {
-    await setHandoffStatus("ERROR", error.message);
+    await setHandoffStatus(source.tabId, "ERROR", error.message);
     await safeDetach(source.tabId);
   });
 });
 
 
 chrome.downloads.onCreated.addListener((downloadItem) => {
-  observeCreatedDownload(downloadItem).catch((error) => {
-    setHandoffStatus("ERROR", error.message).catch(() => undefined);
-  });
+  observeCreatedDownload(downloadItem).catch(() => undefined);
 });
 
 
 chrome.downloads.onChanged.addListener((delta) => {
-  submitCompletedDownload(delta).catch((error) => {
-    setHandoffStatus("ERROR", error.message).catch(() => undefined);
-  });
+  submitCompletedDownload(delta).catch(() => undefined);
 });
 
 
@@ -63,11 +60,11 @@ async function handlePanelMessage(message) {
     case "GO":
       return beginGo(message.exchangeId);
     case "RESUME":
-      return resumeActiveCall();
+      return resumeCall(message.exchangeId);
     case "STOP":
-      return stopActiveCall();
+      return stopCall(message.exchangeId);
     case "DONE":
-      return finishActiveCall();
+      return finishCall(message.exchangeId);
     case "REPAIR":
       return openRepairRound(message.exchangeId);
     default:
@@ -76,21 +73,46 @@ async function handlePanelMessage(message) {
 }
 
 
+async function readHandoffs() {
+  const stored = await chrome.storage.session.get("handoffs");
+  return stored.handoffs ?? {};
+}
+
+
+async function writeHandoff(handoff) {
+  const handoffs = await readHandoffs();
+  handoffs[handoff.exchangeId] = handoff;
+  await chrome.storage.session.set({ handoffs });
+  return handoff;
+}
+
+
+async function dropHandoff(exchangeId) {
+  const handoffs = await readHandoffs();
+  const removed = handoffs[exchangeId] ?? null;
+  delete handoffs[exchangeId];
+  await chrome.storage.session.set({ handoffs });
+  return removed;
+}
+
+
 async function getStatus() {
   const [ready, active, stored] = await Promise.all([
     nativeCommand("calls.list_ready"),
-    nativeCommand("call.active"),
-    chrome.storage.session.get(["handoff", "lastReport", "lastHandoff"]),
+    nativeCommand("calls.active"),
+    chrome.storage.session.get(["handoffs", "lastReport", "lastHandoff"]),
   ]);
+  const handoffs = stored.handoffs ?? {};
   return {
     ready,
     active,
-    handoff: stored.handoff ?? null,
+    handoffs: Object.values(handoffs),
     lastReport: stored.lastReport ?? null,
     canRepair: Boolean(
       stored.lastReport?.status === "INCOMPLETE"
-      && Number.isInteger((stored.handoff ?? stored.lastHandoff)?.tabId),
+      && Number.isInteger(stored.lastHandoff?.tabId),
     ),
+    repairExchangeId: stored.lastHandoff?.exchangeId ?? null,
   };
 }
 
@@ -112,98 +134,88 @@ async function beginGo(exchangeId) {
       download_baseline: existingDownloads.map((item) => item.id),
     });
     started = true;
-    const handoff = {
-      armed: true,
-      tabId: tab.id,
-      exchangeId,
-      requestPaths: result.request_paths,
-      attachmentNames: attachmentBasenames(result.request_paths),
-      status: "WAITING_FOR_ATTACH_CLICK",
-      message: "Click Attach files in ChatGPT.",
-      monitoring: true,
-      monitoringStartedAt: result.active.started_at,
-      downloadBaseline: result.active.download_baseline,
-      observedDownloadIds: result.active.observed_download_ids,
-    };
-    await chrome.storage.session.set({
-      handoff,
-      downloadTracker: { ids: [], processing: [] },
-      lastReport: null,
-    });
-    await chrome.debugger.attach({ tabId: tab.id }, "1.3");
-    await chrome.debugger.sendCommand(
-      { tabId: tab.id },
-      "Page.enable",
-      { enableFileChooserOpenedEvent: true },
-    );
-    await chrome.debugger.sendCommand(
-      { tabId: tab.id },
-      "Page.setInterceptFileChooserDialog",
-      { enabled: true },
-    );
+    const handoff = handoffFrom(result, tab.id, exchangeId, "Click Attach files in ChatGPT.");
+    await writeHandoff(handoff);
+    await armTab(tab.id);
     return handoff;
   } catch (error) {
-    await chrome.storage.session.remove("handoff");
+    await dropHandoff(exchangeId);
     await safeDetach(tab.id);
     if (started) {
-      await nativeCommand("call.stop").catch(() => undefined);
+      await nativeCommand("call.stop", { exchange_id: exchangeId }).catch(() => undefined);
     }
     throw error;
   }
 }
 
 
-async function resumeActiveCall() {
+async function resumeCall(exchangeId) {
   const tab = await chrome.tabs.create({ url: CHATGPT_URL, active: true });
   if (!Number.isInteger(tab.id)) {
     throw new Error("Chrome did not create a usable ChatGPT tab");
   }
   const existingDownloads = await chrome.downloads.search({});
+  const payload = {
+    tab_id: tab.id,
+    download_baseline: existingDownloads.map((item) => item.id),
+  };
+  if (typeof exchangeId === "string" && exchangeId) {
+    payload.exchange_id = exchangeId;
+  }
   try {
-    const result = await nativeCommand("call.resume", {
-      tab_id: tab.id,
-      download_baseline: existingDownloads.map((item) => item.id),
-    });
-    const handoff = {
-      armed: true,
-      tabId: tab.id,
-      exchangeId: result.active.exchange_id,
-      requestPaths: result.request_paths,
-      attachmentNames: attachmentBasenames(result.request_paths),
-      status: "WAITING_FOR_ATTACH_CLICK",
-      message: "Resumed. Click Attach files in ChatGPT.",
-      monitoring: true,
-      monitoringStartedAt: result.active.started_at,
-      downloadBaseline: result.active.download_baseline,
-      observedDownloadIds: result.active.observed_download_ids,
-    };
-    await chrome.storage.session.set({
-      handoff,
-      downloadTracker: { ids: [], processing: [] },
-    });
-    await chrome.debugger.attach({ tabId: tab.id }, "1.3");
-    await chrome.debugger.sendCommand(
-      { tabId: tab.id },
-      "Page.enable",
-      { enableFileChooserOpenedEvent: true },
+    const result = await nativeCommand("call.resume", payload);
+    const handoff = handoffFrom(
+      result,
+      tab.id,
+      result.active.exchange_id,
+      "Resumed. Click Attach files in ChatGPT.",
     );
-    await chrome.debugger.sendCommand(
-      { tabId: tab.id },
-      "Page.setInterceptFileChooserDialog",
-      { enabled: true },
-    );
+    await writeHandoff(handoff);
+    await armTab(tab.id);
     return handoff;
   } catch (error) {
-    await chrome.storage.session.remove(["handoff", "downloadTracker"]);
     await safeDetach(tab.id);
     throw error;
   }
 }
 
 
+function handoffFrom(result, tabId, exchangeId, message) {
+  return {
+    armed: true,
+    tabId,
+    exchangeId,
+    subject: result.active.request_id,
+    requestPaths: result.request_paths,
+    attachmentNames: attachmentBasenames(result.request_paths),
+    status: "WAITING_FOR_ATTACH_CLICK",
+    message,
+    monitoring: true,
+    monitoringStartedAt: result.active.started_at,
+    downloadBaseline: result.active.download_baseline,
+    observedDownloadIds: result.active.observed_download_ids,
+  };
+}
+
+
+async function armTab(tabId) {
+  await chrome.debugger.attach({ tabId }, "1.3");
+  await chrome.debugger.sendCommand(
+    { tabId },
+    "Page.enable",
+    { enableFileChooserOpenedEvent: true },
+  );
+  await chrome.debugger.sendCommand(
+    { tabId },
+    "Page.setInterceptFileChooserDialog",
+    { enabled: true },
+  );
+}
+
+
 async function completeAttachment(source, params) {
-  const stored = await chrome.storage.session.get("handoff");
-  const handoff = stored.handoff;
+  const handoffs = await readHandoffs();
+  const handoff = handoffForTab(handoffs, source.tabId);
   const assignment = buildFileAssignment(handoff, source, params);
   await chrome.debugger.sendCommand(source, assignment.method, assignment.params);
   await chrome.debugger.sendCommand(
@@ -218,16 +230,19 @@ async function completeAttachment(source, params) {
     status: "ATTACHED",
     message: `${handoff.attachmentNames.length} files attached. Review them, then click Send.`,
   };
-  await chrome.storage.session.set({ handoff: updated });
+  await writeHandoff(updated);
   await broadcastStatus(updated);
 }
 
 
 async function openRepairRound(exchangeId) {
-  const stored = await chrome.storage.session.get(["handoff", "lastHandoff"]);
-  const handoff = stored.handoff ?? stored.lastHandoff ?? {};
-  const tabId = handoff.tabId;
-  const target = exchangeId ?? handoff.exchangeId;
+  const stored = await chrome.storage.session.get(["handoffs", "lastHandoff"]);
+  const handoffs = stored.handoffs ?? {};
+  const handoff = (exchangeId ? handoffs[exchangeId] : null)
+    ?? stored.lastHandoff
+    ?? null;
+  const tabId = handoff?.tabId;
+  const target = exchangeId ?? handoff?.exchangeId;
   if (!Number.isInteger(tabId)) {
     throw new Error("No bound ChatGPT tab. Use Resume attachment first.");
   }
@@ -252,6 +267,7 @@ async function openRepairRound(exchangeId) {
   const updated = {
     ...handoff,
     exchangeId: result.exchange_id,
+    tabId,
     armed: false,
     monitoring: true,
     monitoringStartedAt: result.active.started_at,
@@ -266,11 +282,8 @@ async function openRepairRound(exchangeId) {
       : `Correction round ${result.round} ready. Copy the prompt below into ChatGPT, then click Send.`
         + (insertError ? ` (${insertError})` : ""),
   };
-  await chrome.storage.session.set({
-    handoff: updated,
-    downloadTracker: { ids: [], processing: [] },
-    lastReport: null,
-  });
+  await writeHandoff(updated);
+  await chrome.storage.session.set({ lastReport: null });
   await broadcastStatus(updated);
   return updated;
 }
@@ -306,22 +319,54 @@ async function insertPromptIntoComposer(tabId, text) {
 }
 
 
-async function stopActiveCall() {
-  const stored = await chrome.storage.session.get("handoff");
-  if (Number.isInteger(stored.handoff?.tabId)) {
-    await safeDetach(stored.handoff.tabId);
+async function stopCall(exchangeId) {
+  const handoffs = await readHandoffs();
+  const handoff = exchangeId ? handoffs[exchangeId] : Object.values(handoffs)[0];
+  if (Number.isInteger(handoff?.tabId)) {
+    await safeDetach(handoff.tabId);
   }
-  const result = await nativeCommand("call.stop");
-  await chrome.storage.session.remove(["handoff", "downloadTracker"]);
+  const payload = exchangeId ? { exchange_id: exchangeId } : {};
+  const result = await nativeCommand("call.stop", payload);
+  await dropHandoff(exchangeId ?? handoff?.exchangeId);
   return result;
 }
 
 
+async function finishCall(exchangeId) {
+  const handoffs = await readHandoffs();
+  const handoff = exchangeId ? handoffs[exchangeId] : Object.values(handoffs)[0];
+  const target = exchangeId ?? handoff?.exchangeId;
+  if (handoff) {
+    await writeHandoff({ ...handoff, monitoring: false });
+  }
+  const payload = target ? { exchange_id: target } : {};
+  const report = await nativeCommand("call.done", payload);
+  // Keep the tab binding so a correction round can reuse the same conversation.
+  const lastHandoff = handoff
+    ? { tabId: handoff.tabId, exchangeId: handoff.exchangeId }
+    : null;
+  await chrome.storage.session.set({ lastReport: report, lastHandoff });
+  await dropHandoff(target);
+  await resetTrackerWhenIdle();
+  return report;
+}
+
+
+async function resetTrackerWhenIdle() {
+  const handoffs = await readHandoffs();
+  if (Object.keys(handoffs).length === 0) {
+    await chrome.storage.session.set({ downloadTracker: { ids: [], processing: [] } });
+  }
+}
+
+
 async function observeCreatedDownload(downloadItem) {
-  const stored = await chrome.storage.session.get(["handoff", "downloadTracker"]);
-  const handoff = stored.handoff;
+  const stored = await chrome.storage.session.get(["handoffs", "downloadTracker"]);
   const tracker = stored.downloadTracker ?? { ids: [], processing: [] };
-  if (!shouldObserveDownload(handoff, downloadItem) || tracker.ids.includes(downloadItem.id)) {
+  if (
+    !anyShouldObserveDownload(stored.handoffs ?? {}, downloadItem)
+    || tracker.ids.includes(downloadItem.id)
+  ) {
     return;
   }
   tracker.ids.push(downloadItem.id);
@@ -330,10 +375,10 @@ async function observeCreatedDownload(downloadItem) {
 
 
 async function submitCompletedDownload(delta) {
-  const stored = await chrome.storage.session.get(["handoff", "downloadTracker"]);
-  const handoff = stored.handoff;
+  const stored = await chrome.storage.session.get(["handoffs", "downloadTracker"]);
+  const handoffs = stored.handoffs ?? {};
   const tracker = stored.downloadTracker ?? { ids: [], processing: [] };
-  if (!completedTrackedDownload(handoff, tracker.ids, delta)) {
+  if (!anyCompletedTrackedDownload(handoffs, tracker.ids, delta)) {
     return;
   }
   if (!claimCompletedDownload(tracker, delta.id)) {
@@ -344,7 +389,6 @@ async function submitCompletedDownload(delta) {
   const matches = await chrome.downloads.search({ id: delta.id });
   const item = matches[0];
   if (!item || item.state !== "complete" || !item.filename) {
-    await setHandoffStatus("ERROR", `Completed download ${delta.id} has no local file.`);
     return;
   }
   const result = await nativeCommand("download.completed", {
@@ -357,44 +401,29 @@ async function submitCompletedDownload(delta) {
     startTime: item.startTime,
     endTime: item.endTime,
   });
+  const owner = result.exchange_id ? handoffs[result.exchange_id] : null;
+  if (!owner) {
+    return;
+  }
   const updated = {
-    ...handoff,
-    observedDownloadIds: [...new Set([...(handoff.observedDownloadIds ?? []), item.id])],
+    ...owner,
+    observedDownloadIds: [...new Set([...(owner.observedDownloadIds ?? []), item.id])],
     status: `DOWNLOAD_${result.status}`,
     message: downloadMessage(result),
   };
-  await chrome.storage.session.set({ handoff: updated, downloadTracker: tracker });
+  await writeHandoff(updated);
   await broadcastStatus(updated);
 }
 
 
-async function finishActiveCall() {
-  const stored = await chrome.storage.session.get(["handoff", "downloadTracker"]);
-  if (stored.handoff) {
-    const stopped = { ...stored.handoff, monitoring: false };
-    await chrome.storage.session.set({
-      handoff: stopped,
-      downloadTracker: { ...(stored.downloadTracker ?? { ids: [], processing: [] }), ids: [] },
-    });
-  }
-  const report = await nativeCommand("call.done");
-  // Keep the tab binding so a correction round can reuse the same conversation.
-  const lastHandoff = stored.handoff
-    ? { tabId: stored.handoff.tabId, exchangeId: stored.handoff.exchangeId }
-    : null;
-  await chrome.storage.session.set({ lastReport: report, lastHandoff });
-  await chrome.storage.session.remove(["handoff", "downloadTracker"]);
-  return report;
-}
-
-
-async function setHandoffStatus(status, message) {
-  const stored = await chrome.storage.session.get("handoff");
-  if (!stored.handoff) {
+async function setHandoffStatus(tabId, status, message) {
+  const handoffs = await readHandoffs();
+  const handoff = handoffForTab(handoffs, tabId);
+  if (!handoff) {
     return;
   }
-  const updated = { ...stored.handoff, status, message, armed: false };
-  await chrome.storage.session.set({ handoff: updated });
+  const updated = { ...handoff, status, message, armed: false };
+  await writeHandoff(updated);
   await broadcastStatus(updated);
 }
 
@@ -441,6 +470,7 @@ function downloadMessage(result) {
       return "Download saved as a candidate; waiting for the main JSON to name it.";
     case "IGNORED":
       return "Download left untouched because it is not part of this call.";
+    case "AMBIGUOUS":
     case "INVALID":
     case "CONFLICT":
       return result.error ?? "Download was not collected.";
