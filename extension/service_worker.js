@@ -105,7 +105,9 @@ async function getStatus() {
   const handoffs = stored.handoffs ?? {};
   return {
     ready,
-    active,
+    // An empty array is truthy, so returning [] here disables Go in any caller
+    // that tests `if (state.active)`. Absence must be falsy.
+    active: Array.isArray(active) && active.length === 0 ? null : active,
     handoffs: Object.values(handoffs),
     lastReport: stored.lastReport ?? null,
     canRepair: Boolean(
