@@ -169,6 +169,37 @@ class RepairTests(unittest.TestCase):
         self.assertEqual(report["status"], "COMPLETE")
         self.assertEqual(collect_defects(self.exchange), [])
 
+    def test_a_main_json_that_lists_itself_is_named_as_that_error(self):
+        # A model that lists the main JSON among its own artifacts declares a
+        # digest it cannot possibly compute. Reporting that as a hash mismatch
+        # would ask for an impossible correction and never converge.
+        body = {
+            "request_id": "request_fixture",
+            "status": "COMPLETE",
+            "artifacts_manifest": [
+                {
+                    "filename": "result.json",
+                    "status": "CREATED",
+                    "media_type": "application/json",
+                    "size": 10,
+                    "sha256": "0" * 64,
+                }
+            ],
+            "delivery": ["result.json"],
+        }
+        (self.exchange / "response" / "result.json").write_bytes(
+            (json.dumps(body) + "\n").encode("utf-8")
+        )
+        finish_call(self.root)
+
+        defects = collect_defects(self.exchange)
+
+        kinds = [defect["kind"] for defect in defects]
+        self.assertIn("MAIN_JSON_LISTED_AS_ARTIFACT", kinds)
+        self.assertNotIn("ARTIFACT_HASH_MISMATCH", kinds)
+        entry = defects[kinds.index("MAIN_JSON_LISTED_AS_ARTIFACT")]
+        self.assertIn("Remove that entry", entry["observed"])
+
     def test_prompt_names_every_defect_and_keeps_the_request_id(self):
         self.deliver_main_only()
         finish_call(self.root)

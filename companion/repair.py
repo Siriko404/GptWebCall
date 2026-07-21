@@ -311,6 +311,23 @@ def _artifact_defects(
                 )
             )
             continue
+        if name.casefold() == expected_main.casefold():
+            # Self-reference. The declared digest can never be right, because the
+            # file would have to contain the hash of itself. Saying "recompute
+            # the hash" here would ask for something impossible and the
+            # correction round would never converge.
+            defects.append(
+                _defect(
+                    "MAIN_JSON_LISTED_AS_ARTIFACT",
+                    name,
+                    "artifacts_manifest to list only the additional files, never "
+                    "the main JSON itself",
+                    f"artifacts_manifest contains an entry for {name}, which is "
+                    "the main JSON. Remove that entry entirely. Keep the file "
+                    "listed in delivery, which is correct.",
+                )
+            )
+            continue
         status = artifact.get("status")
         if status not in {"CREATED", "MISSING", "NOT_CREATED"}:
             defects.append(
