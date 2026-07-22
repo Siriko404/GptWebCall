@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import hashlib
+import io
 import json
 import os
 import re
 import shutil
 import tempfile
+import zipfile
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -49,7 +51,8 @@ def prepare_call(root: Path, spec: dict[str, Any], now: datetime) -> dict[str, A
 
     timestamp = now.strftime(_TIMESTAMP)
     exchange_id = f"{timestamp}_{slug}"
-    prompt_name = f"PROMPT_{timestamp}.txt"
+    prompt_name = f"PROMPT_{timestamp}.md"
+    bundle_name = f"{slug}_inputs.zip"
     calls_dir = root / "calls"
     state_dir = root / "state"
     destination = calls_dir / exchange_id
@@ -57,7 +60,7 @@ def prepare_call(root: Path, spec: dict[str, Any], now: datetime) -> dict[str, A
         raise FileExistsError(f"exchange already exists: {exchange_id}")
 
     prepared_inputs: list[tuple[Path, str]] = []
-    seen = {prompt_name.casefold()}
+    seen = {prompt_name.casefold(), bundle_name.casefold()}
     for item in input_files:
         if not isinstance(item, dict):
             raise ValueError("each input file must be an object")
@@ -108,6 +111,13 @@ def prepare_call(root: Path, spec: dict[str, Any], now: datetime) -> dict[str, A
             _copy_verified(source, target)
             request_files.append(_file_record(target))
 
+        # Everything except the prompt travels as one archive. The individual
+        # files stay on disk beside it: they are the provenance record and the
+        # thing whose hashes are checked, while the archive is what is uploaded.
+        bundle_path = request_dir / bundle_name
+        _write_bundle(bundle_path, [name for _, name in prepared_inputs], request_dir)
+        request_files.append(_file_record(bundle_path))
+
         governing = _read_json_object(
             request_dir / "WEB_REVIEW_REQUEST.json", "WEB_REVIEW_REQUEST"
         )
@@ -127,6 +137,7 @@ def prepare_call(root: Path, spec: dict[str, Any], now: datetime) -> dict[str, A
             "expected_main_json": expected_main,
             "expected_artifacts": expected_artifacts,
             "request_files": request_files,
+            "attach_files": [prompt_name, bundle_name],
             "response_dir": "response",
         }
         _write_json_atomic(staging / "EXCHANGE_MANIFEST.json", manifest)
@@ -151,7 +162,33 @@ def _expected_artifact_names(spec: dict[str, Any]) -> list[str]:
             raise ValueError(f"duplicate expected artifact: {name}")
         seen.add(name.casefold())
         names.append(name)
+    # A call may return no artifacts at all. If it returns any, they travel as
+    # exactly one archive, so the whole exchange is two files in each direction
+    # and only two filenames are ever exposed to download routing.
+    if names and (len(names) != 1 or Path(names[0]).suffix.casefold() != ".zip"):
+        raise ValueError(
+            "expected_artifacts must be either empty or a single .zip; "
+            "every returned file goes inside that one archive"
+        )
     return names
+
+
+def _write_bundle(target: Path, names: list[str], source_dir: Path) -> None:
+    """Pack the request files into one archive, byte-identical run to run.
+
+    Ordinary zipfile writes embed each file's modification time, so the same
+    inputs would produce a different digest on every preparation and the archive
+    could not be verified against its own manifest record. Fixing the timestamp
+    and the order removes both sources of variation.
+    """
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as bundle:
+        for name in sorted(names, key=str.casefold):
+            info = zipfile.ZipInfo(name, date_time=(1980, 1, 1, 0, 0, 0))
+            info.compress_type = zipfile.ZIP_DEFLATED
+            info.external_attr = 0o644 << 16
+            bundle.writestr(info, (source_dir / name).read_bytes())
+    _write_bytes_durable(target, buffer.getvalue())
 
 
 def claimed_deliverable_names(
@@ -411,9 +448,19 @@ def request_paths(root: Path, exchange_id: str) -> list[str]:
     manifest = _read_json_object(
         exchange_dir / "EXCHANGE_MANIFEST.json", "EXCHANGE_MANIFEST"
     )
+    records = {
+        _safe_name(str(item.get("filename", "")), "request filename"): item
+        for item in manifest.get("request_files", [])
+    }
+    # Only the prompt and the archive are uploaded. Exchanges prepared before
+    # bundling existed have no attach list and upload every request file.
+    attach = manifest.get("attach_files") or list(records)
     paths: list[str] = []
-    for item in manifest.get("request_files", []):
-        name = _safe_name(str(item.get("filename", "")), "request filename")
+    for name in attach:
+        name = _safe_name(str(name), "request filename")
+        item = records.get(name)
+        if item is None:
+            raise ValueError(f"attach file is not a request file: {name}")
         path = (exchange_dir / "request" / name).resolve(strict=True)
         if path.parent != (exchange_dir / "request").resolve():
             raise ValueError("request file escapes the exchange")

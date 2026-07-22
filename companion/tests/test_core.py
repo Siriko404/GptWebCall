@@ -69,10 +69,11 @@ class CoreTests(unittest.TestCase):
         self.assertEqual(
             names,
             [
-                "PROMPT_2026-07-14_151500.txt",
+                "PROMPT_2026-07-14_151500.md",
                 "WEB_REVIEW_REQUEST.json",
                 "WEB_RESPONSE_SCHEMA.json",
                 "context.txt",
+                "fixture_call_inputs.zip",
             ],
         )
         exchange = self.root / "calls" / manifest["exchange_id"]
@@ -124,7 +125,7 @@ class CoreTests(unittest.TestCase):
         spec["input_files"].append(
             {
                 "path": str(self.context),
-                "filename": "PROMPT_2026-07-14_151500.txt",
+                "filename": "PROMPT_2026-07-14_151500.md",
             }
         )
 

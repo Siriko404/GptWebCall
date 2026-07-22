@@ -14,7 +14,10 @@ class ProtocolTests(unittest.TestCase):
         for required in (
             "C:\\GptWebCall",
             "reasoning-heavy",
-            "PROMPT_YYYY-MM-DD_HHMMSS.txt",
+            "PROMPT_YYYY-MM-DD_HHMMSS.md",
+            "## Two files up, two files down",
+            "_inputs.zip",
+            "either empty, when the call returns nothing but the main JSON, or a single `.zip`",
             "Several calls may be active at once",
             "## Parallel calls",
             "## Filenames are the routing key",

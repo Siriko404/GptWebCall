@@ -118,7 +118,12 @@ class NativeHostTests(unittest.TestCase):
         )
 
         self.assertEqual(result["active"]["tab_id"], 42)
-        self.assertEqual(len(result["request_paths"]), 3)
+        # Only the prompt and the one input archive are ever uploaded, however
+        # many files went into that archive.
+        self.assertEqual(
+            [Path(path).name for path in result["request_paths"]],
+            ["PROMPT_2026-07-14_193000.md", "native_fixture_inputs.zip"],
+        )
         self.assertTrue(
             all(Path(path).parent.name == "request" for path in result["request_paths"])
         )

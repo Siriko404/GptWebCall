@@ -60,21 +60,28 @@ class DeliverableNameTests(unittest.TestCase):
     def test_preparing_a_colliding_artifact_name_is_refused(self):
         prepare_call(
             self.root,
-            self.spec("First", "first.json", ["FINDINGS.md"]),
+            self.spec("First", "first.json", ["findings_bundle.zip"]),
             self.now,
         )
 
-        with self.assertRaisesRegex(ValueError, "FINDINGS.md is already claimed"):
+        with self.assertRaisesRegex(ValueError, "findings_bundle.zip is already claimed"):
             prepare_call(
                 self.root,
-                self.spec("Second", "second.json", ["FINDINGS.md"]),
+                self.spec("Second", "second.json", ["findings_bundle.zip"]),
                 self.now + timedelta(minutes=1),
             )
 
-    def test_an_artifact_name_cannot_collide_with_another_main_json(self):
+    def test_an_artifact_can_no_longer_collide_with_a_main_json(self):
+        """The one-archive rule makes this whole class of collision unreachable.
+
+        A main response must end in .json and an artifact must be the single
+        .zip, so the two namespaces cannot meet. The rule is refused before the
+        claim check ever runs, which is why the message is about the archive and
+        not about the name.
+        """
         prepare_call(self.root, self.spec("First", "shared.json"), self.now)
 
-        with self.assertRaisesRegex(ValueError, "already claimed"):
+        with self.assertRaisesRegex(ValueError, "single .zip"):
             prepare_call(
                 self.root,
                 self.spec("Second", "second.json", ["shared.json"]),
@@ -94,12 +101,12 @@ class DeliverableNameTests(unittest.TestCase):
     def test_distinct_names_prepare_and_run_together(self):
         first = prepare_call(
             self.root,
-            self.spec("Numbers", "numbers_response.json", ["numbers_ledger.csv"]),
+            self.spec("Numbers", "numbers_response.json", ["numbers_outputs.zip"]),
             self.now,
         )
         second = prepare_call(
             self.root,
-            self.spec("Claims", "claims_response.json", ["claims_findings.md"]),
+            self.spec("Claims", "claims_response.json", ["claims_outputs.zip"]),
             self.now + timedelta(minutes=1),
         )
 
@@ -110,9 +117,9 @@ class DeliverableNameTests(unittest.TestCase):
         self.assertEqual(
             sorted(claimed),
             [
-                "claims_findings.md",
+                "claims_outputs.zip",
                 "claims_response.json",
-                "numbers_ledger.csv",
+                "numbers_outputs.zip",
                 "numbers_response.json",
             ],
         )
@@ -131,7 +138,7 @@ class DeliverableNameTests(unittest.TestCase):
     def test_a_promised_artifact_that_is_never_mentioned_fails_validation(self):
         call = prepare_call(
             self.root,
-            self.spec("Numbers", "numbers_response.json", ["numbers_ledger.csv"]),
+            self.spec("Numbers", "numbers_response.json", ["numbers_outputs.zip"]),
             self.now,
         )
         start_call(self.root, call["exchange_id"], 11, [])
@@ -152,7 +159,7 @@ class DeliverableNameTests(unittest.TestCase):
         report = finish_call(self.root, call["exchange_id"])
 
         self.assertEqual(report["status"], "INCOMPLETE")
-        self.assertEqual(report["missing_files"], ["numbers_ledger.csv"])
+        self.assertEqual(report["missing_files"], ["numbers_outputs.zip"])
         self.assertEqual(validate_response(exchange)["status"], "INCOMPLETE")
         self.assertEqual(
             [defect["kind"] for defect in collect_defects(exchange)],
@@ -177,7 +184,7 @@ class DeliverableNameTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "unsafe"):
             prepare_call(
                 self.root,
-                self.spec("Bad", "bad.json", ["../escape.md"]),
+                self.spec("Bad", "bad.json", ["../escape.zip"]),
                 self.now,
             )
 
