@@ -7,36 +7,72 @@
     <link rel="stylesheet" href="sidepanel.css">
   </head>
   <body>
+    <header class="bar">
+      <div class="bar-left">
+        <span class="mark">GWC</span>
+        <div>
+          <h1>GPT Web Call</h1>
+          <p id="companion-line" class="muted">Connecting to the companion</p>
+        </div>
+      </div>
+      <span id="health" class="dot" title="Companion status"></span>
+    </header>
+
     <main>
-      <header>
-        <p class="eyebrow">GPT WEB CALL</p>
-        <h1>Calls in flight</h1>
-        <p class="subtitle">You control Attach, Send, downloads, and Done.</p>
-      </header>
-
-      <section class="card">
-        <label for="call-select">Prepared call</label>
-        <select id="call-select"></select>
-        <div id="call-summary" class="summary"></div>
+      <section class="card" id="launch-card">
+        <div class="card-head">
+          <h2>Launch a prepared call</h2>
+          <span id="ready-count" class="pill"></span>
+        </div>
+        <select id="call-select" aria-label="Prepared call"></select>
+        <dl id="call-detail" class="detail"></dl>
         <button id="go-button" class="primary" type="button">Go</button>
+        <p class="hint">Go arms the tab. You still click Attach, Send, every
+          download, and Done.</p>
       </section>
 
-      <section class="card">
-        <h2>Status</h2>
-        <p id="status" class="status">Connecting to the local companion…</p>
-        <div id="running"></div>
-        <ul id="attachments" class="file-list"></ul>
-        <div id="validation-report" class="report" hidden></div>
-        <button id="resume-button" class="primary" type="button" hidden>Resume attachment</button>
-        <button id="repair-button" class="primary" type="button" hidden>Send correction round</button>
+      <section class="card" id="flight-card">
+        <div class="card-head">
+          <h2>In flight</h2>
+          <span id="flight-count" class="pill"></span>
+        </div>
+        <div id="flight"></div>
+        <p id="flight-empty" class="muted">No call is running.</p>
+        <button id="resume-button" class="secondary" type="button" hidden>
+          Resume attachment
+        </button>
       </section>
 
-      <section id="repair-card" class="card" hidden>
-        <h2>Correction prompt</h2>
-        <p class="subtitle">Review it in ChatGPT, then click Send yourself.</p>
-        <pre id="repair-prompt" class="report"></pre>
-        <button id="copy-repair-button" class="secondary" type="button">Copy prompt</button>
+      <section class="card" id="result-card" hidden>
+        <div class="card-head">
+          <h2>Last result</h2>
+          <span id="result-status" class="pill"></span>
+        </div>
+        <div id="result-body"></div>
+        <button id="repair-button" class="primary" type="button" hidden>
+          Open correction round
+        </button>
       </section>
+
+      <section class="card" id="repair-card" hidden>
+        <div class="card-head">
+          <h2>Correction prompt</h2>
+          <button id="copy-repair-button" class="ghost" type="button">Copy</button>
+        </div>
+        <p class="hint">Already typed into the composer. Read it, then click
+          ChatGPT's own Send.</p>
+        <pre id="repair-prompt" class="code"></pre>
+      </section>
+
+      <section class="card" id="history-card">
+        <div class="card-head">
+          <h2>Recent exchanges</h2>
+          <button id="history-toggle" class="ghost" type="button">Show</button>
+        </div>
+        <ul id="history" class="history" hidden></ul>
+      </section>
+
+      <p id="error" class="error" hidden></p>
     </main>
     <script type="module" src="sidepanel.js"></script>
   </body>

@@ -81,6 +81,8 @@ class NativeHostTests(unittest.TestCase):
                 "calls.list_ready",
                 "call.active",
                 "calls.active",
+                "calls.progress",
+                "calls.recent",
                 "call.go",
                 "call.resume",
                 "download.completed",

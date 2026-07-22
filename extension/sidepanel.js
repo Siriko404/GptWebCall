@@ -1,58 +1,51 @@
-const select = document.querySelector("#call-select");
-const summary = document.querySelector("#call-summary");
-const status = document.querySelector("#status");
-const running = document.querySelector("#running");
-const attachments = document.querySelector("#attachments");
-const goButton = document.querySelector("#go-button");
-const resumeButton = document.querySelector("#resume-button");
-const repairButton = document.querySelector("#repair-button");
-const repairCard = document.querySelector("#repair-card");
-const repairPrompt = document.querySelector("#repair-prompt");
-const copyRepairButton = document.querySelector("#copy-repair-button");
-const validationReport = document.querySelector("#validation-report");
+/* The panel exists to answer one question quickly: is it safe to click Done?
+ *
+ * Done stops monitoring. Anything still downloading at that moment is never
+ * collected, and getting it back means copying files into the exchange by hand.
+ * So every in-flight call shows its expected files as a checklist, and Done is
+ * held back until they have all landed. The operator can still force it, but
+ * only deliberately.
+ */
+
+import { describeStage, formatBytes, formatElapsed, downloadGuard } from "./lib/panel.js";
+
+const el = (id) => document.querySelector(`#${id}`);
+
+const select = el("call-select");
+const callDetail = el("call-detail");
+const readyCount = el("ready-count");
+const goButton = el("go-button");
+const flight = el("flight");
+const flightEmpty = el("flight-empty");
+const flightCount = el("flight-count");
+const resumeButton = el("resume-button");
+const resultCard = el("result-card");
+const resultStatus = el("result-status");
+const resultBody = el("result-body");
+const repairButton = el("repair-button");
+const repairCard = el("repair-card");
+const repairPrompt = el("repair-prompt");
+const copyRepairButton = el("copy-repair-button");
+const historyCard = el("history-card");
+const history = el("history");
+const historyToggle = el("history-toggle");
+const health = el("health");
+const companionLine = el("companion-line");
+const errorLine = el("error");
 
 let repairTarget = null;
+let forced = new Set();
+let ticking = null;
 
+goButton.addEventListener("click", () => run(() => send({ type: "GO", exchangeId: select.value })));
+resumeButton.addEventListener("click", () => run(() => send({ type: "RESUME" })));
 
-goButton.addEventListener("click", async () => {
-  setBusy(true);
-  try {
-    await send({ type: "GO", exchangeId: select.value });
-    await refresh();
-  } catch (error) {
-    status.textContent = error.message;
-  } finally {
-    setBusy(false);
-  }
-});
-
-
-resumeButton.addEventListener("click", async () => {
-  setBusy(true);
-  try {
-    await send({ type: "RESUME" });
-    await refresh();
-  } catch (error) {
-    status.textContent = error.message;
-  } finally {
-    setBusy(false);
-  }
-});
-
-
-repairButton.addEventListener("click", async () => {
-  setBusy(true);
-  try {
+repairButton.addEventListener("click", () =>
+  run(async () => {
     const handoff = await send({ type: "REPAIR", exchangeId: repairTarget });
     showRepairPrompt(handoff);
-    await refresh();
-  } catch (error) {
-    status.textContent = error.message;
-  } finally {
-    setBusy(false);
-  }
-});
-
+  }),
+);
 
 copyRepairButton.addEventListener("click", async () => {
   try {
@@ -63,14 +56,12 @@ copyRepairButton.addEventListener("click", async () => {
   }
 });
 
-
-select.addEventListener("change", () => {
-  const call = select.selectedOptions[0]?.call;
-  summary.textContent = call
-    ? `${call.subject} · expects ${call.expected_main_json}`
-    : "No prepared calls.";
+historyToggle.addEventListener("click", () => {
+  history.hidden = !history.hidden;
+  historyToggle.textContent = history.hidden ? "Show" : "Hide";
 });
 
+select.addEventListener("change", () => renderDetail(select.selectedOptions[0]?.call));
 
 chrome.runtime.onMessage.addListener((message) => {
   if (message?.type === "HANDOFF_STATUS") {
@@ -78,104 +69,254 @@ chrome.runtime.onMessage.addListener((message) => {
   }
 });
 
-
-async function refresh() {
+async function run(action) {
+  setBusy(true);
+  clearError();
   try {
-    const state = await send({ type: "GET_STATUS" });
-    renderReady(state.ready);
-    renderRunning(state.handoffs, state.active);
-    repairTarget = state.repairExchangeId;
-    repairButton.hidden = !state.canRepair;
-    resumeButton.hidden = !(state.active?.length && state.handoffs.length === 0);
-    if (state.handoffs.length === 0) {
-      status.textContent = state.active?.length
-        ? "A call is active but this Chrome session lost its tab. Resume it."
-        : "Ready.";
-      attachments.replaceChildren();
-    }
-    renderReport(state.lastReport);
+    await action();
   } catch (error) {
-    status.textContent = `Local companion unavailable: ${error.message}`;
-    goButton.disabled = true;
+    showError(error.message);
+  } finally {
+    setBusy(false);
+    await refresh();
   }
 }
 
+async function refresh() {
+  let state;
+  try {
+    state = await send({ type: "GET_STATUS" });
+  } catch (error) {
+    health.className = "dot down";
+    companionLine.textContent = "Companion unavailable";
+    showError(error.message);
+    goButton.disabled = true;
+    return;
+  }
+  health.className = "dot up";
+  companionLine.textContent = state.root ? shortRoot(state.root) : "Companion connected";
+  clearError();
+
+  renderReady(state.ready ?? []);
+  renderFlight(state.handoffs ?? [], state.progress ?? []);
+  renderHistory(state.recent ?? []);
+
+  resumeButton.hidden = !(state.active?.length && (state.handoffs ?? []).length === 0);
+  repairTarget = state.repairExchangeId;
+  repairButton.hidden = !state.canRepair;
+  renderResult(state.lastReport);
+  scheduleTick(state.handoffs ?? []);
+}
+
+/* ---------- prepared calls ---------- */
 
 function renderReady(ready) {
+  const keep = select.value;
   select.replaceChildren();
   for (const call of ready) {
     const option = document.createElement("option");
     option.value = call.exchange_id;
-    option.textContent = call.subject;
+    option.textContent = call.subject || call.exchange_id;
     option.call = call;
     select.append(option);
   }
-  select.dispatchEvent(new Event("change"));
+  if (ready.some((call) => call.exchange_id === keep)) {
+    select.value = keep;
+  }
+  readyCount.textContent = ready.length === 1 ? "1 ready" : `${ready.length} ready`;
+  readyCount.className = ready.length ? "pill ok" : "pill";
   goButton.disabled = ready.length === 0;
+  renderDetail(select.selectedOptions[0]?.call);
 }
 
-
-function renderRunning(handoffs, active) {
-  running.replaceChildren();
-  if (handoffs.length === 0) {
+function renderDetail(call) {
+  callDetail.replaceChildren();
+  if (!call) {
     return;
   }
-  status.textContent = `${handoffs.length} call${handoffs.length === 1 ? "" : "s"} in flight.`;
-  attachments.replaceChildren();
+  const rows = [
+    ["request", call.request_id],
+    ["returns", call.expected_main_json],
+  ];
+  for (const name of call.expected_artifacts ?? []) {
+    rows.push(["archive", name]);
+  }
+  const uploads = call.attach_files ?? [];
+  if (uploads.length) {
+    rows.push(["uploads", `${uploads.length} files: ${uploads.join(", ")}`]);
+  }
+  for (const [term, value] of rows) {
+    const dt = document.createElement("dt");
+    dt.textContent = term;
+    const dd = document.createElement("dd");
+    dd.textContent = value ?? "";
+    callDetail.append(dt, dd);
+  }
+}
+
+/* ---------- in flight ---------- */
+
+function renderFlight(handoffs, progress) {
+  flight.replaceChildren();
+  flightEmpty.hidden = handoffs.length > 0;
+  flightCount.textContent = handoffs.length ? `${handoffs.length} running` : "idle";
+  flightCount.className = handoffs.length ? "pill wait" : "pill";
+
+  const byId = new Map(progress.map((item) => [item.exchange_id, item]));
   for (const handoff of handoffs) {
-    running.append(runningRow(handoff));
-  }
-  const armed = handoffs.find((one) => one.armed);
-  if (armed) {
-    for (const name of armed.attachmentNames ?? []) {
-      const item = document.createElement("li");
-      item.textContent = name;
-      attachments.append(item);
-    }
+    flight.append(callCard(handoff, byId.get(handoff.exchangeId)));
   }
 }
 
+function callCard(handoff, progress) {
+  const card = document.createElement("div");
+  card.className = "call";
 
-function runningRow(handoff) {
+  const title = document.createElement("p");
+  title.className = "call-title";
+  title.textContent = progress?.subject || handoff.subject || handoff.exchangeId;
+  card.append(title);
+
+  const id = document.createElement("div");
+  id.className = "call-id";
+  id.textContent = handoff.exchangeId;
+  card.append(id);
+
+  const head = document.createElement("div");
+  head.className = "card-head";
+  const stage = document.createElement("p");
+  stage.className = "call-stage";
+  stage.textContent = handoff.message ?? describeStage(handoff.status);
+  head.append(stage);
+  const elapsed = document.createElement("span");
+  elapsed.className = "pill";
+  elapsed.dataset.since = progress?.started_at ?? handoff.monitoringStartedAt ?? "";
+  elapsed.textContent = formatElapsed(elapsed.dataset.since, Date.now());
+  head.append(elapsed);
+  card.append(head);
+
+  if (progress?.files?.length) {
+    card.append(fileChecklist(progress.files));
+  }
+
+  const guard = downloadGuard(progress, forced.has(handoff.exchangeId));
+  if (guard.warning) {
+    const warn = document.createElement("p");
+    warn.className = "warn";
+    warn.textContent = guard.warning;
+    card.append(warn);
+  }
+
   const row = document.createElement("div");
-  row.className = "summary";
-
-  const title = document.createElement("div");
-  title.textContent = handoff.exchangeId;
-  row.append(title);
-
-  const detail = document.createElement("div");
-  detail.textContent = handoff.message ?? handoff.status;
-  row.append(detail);
-
-  row.append(actionButton("Done and validate", "primary", { type: "DONE", exchangeId: handoff.exchangeId }));
+  row.className = "row";
+  const done = actionButton(guard.doneLabel, "primary", {
+    type: "DONE",
+    exchangeId: handoff.exchangeId,
+  });
+  done.disabled = guard.blockDone;
+  row.append(done);
   row.append(actionButton("Stop", "secondary", { type: "STOP", exchangeId: handoff.exchangeId }));
-  return row;
+  card.append(row);
+
+  if (guard.blockDone) {
+    const override = document.createElement("button");
+    override.type = "button";
+    override.className = "ghost";
+    override.textContent = "Let me click Done anyway";
+    override.addEventListener("click", () => {
+      forced.add(handoff.exchangeId);
+      refresh();
+    });
+    card.append(override);
+  }
+  return card;
 }
 
+function fileChecklist(files) {
+  const list = document.createElement("ul");
+  list.className = "files";
+  for (const file of files) {
+    const item = document.createElement("li");
+    item.className = file.arrived ? "here" : "away";
+
+    const tick = document.createElement("span");
+    tick.className = "tick";
+    tick.textContent = file.arrived ? "✓" : "○";
+    item.append(tick);
+
+    const name = document.createElement("span");
+    name.className = "name";
+    name.textContent = file.filename;
+    item.append(name);
+
+    const size = document.createElement("span");
+    size.className = "size";
+    size.textContent = file.arrived ? formatBytes(file.size) : "waiting";
+    item.append(size);
+
+    list.append(item);
+  }
+  return list;
+}
 
 function actionButton(label, className, message) {
   const button = document.createElement("button");
   button.type = "button";
   button.className = className;
   button.textContent = label;
-  button.addEventListener("click", async () => {
-    setBusy(true);
-    try {
+  button.addEventListener("click", () =>
+    run(async () => {
       const result = await send(message);
       if (message.type === "DONE") {
-        renderReport(result);
+        forced.delete(message.exchangeId);
+        renderResult(result);
       }
-      await refresh();
-    } catch (error) {
-      status.textContent = error.message;
-    } finally {
-      setBusy(false);
-    }
-  });
+    }),
+  );
   return button;
 }
 
+/* ---------- results ---------- */
+
+function renderResult(report) {
+  if (!report) {
+    resultCard.hidden = true;
+    return;
+  }
+  resultCard.hidden = false;
+  resultStatus.textContent = report.status ?? "";
+  resultStatus.className =
+    report.status === "COMPLETE" ? "pill ok" : report.status === "INCOMPLETE" ? "pill bad" : "pill";
+
+  resultBody.replaceChildren();
+  const list = document.createElement("ul");
+  list.className = "result-list";
+  const rows = [];
+  if (report.checked_files?.length) {
+    rows.push(["validated", report.checked_files.join(", ")]);
+  }
+  if (report.missing_files?.length) {
+    rows.push(["missing", report.missing_files.join(", ")]);
+  }
+  if (report.invalid_files?.length) {
+    rows.push(["invalid", report.invalid_files.join(", ")]);
+  }
+  if (rows.length === 0) {
+    rows.push(["result", "See the validation report on disk."]);
+  }
+  for (const [label, value] of rows) {
+    const item = document.createElement("li");
+    const key = document.createElement("span");
+    key.className = "label";
+    key.textContent = label;
+    const val = document.createElement("span");
+    val.className = "value";
+    val.textContent = value;
+    item.append(key, val);
+    list.append(item);
+  }
+  resultBody.append(list);
+}
 
 function showRepairPrompt(handoff) {
   if (!handoff?.repairPrompt) {
@@ -183,39 +324,68 @@ function showRepairPrompt(handoff) {
   }
   repairPrompt.textContent = handoff.repairPrompt;
   repairCard.hidden = false;
-  copyRepairButton.textContent = "Copy prompt";
+  copyRepairButton.textContent = "Copy";
 }
 
+/* ---------- history ---------- */
 
-function renderReport(report) {
-  if (!report) {
-    validationReport.hidden = true;
-    validationReport.textContent = "";
+function renderHistory(recent) {
+  historyCard.hidden = recent.length === 0;
+  history.replaceChildren();
+  for (const item of recent) {
+    const row = document.createElement("li");
+    const name = document.createElement("span");
+    name.className = "h-name";
+    name.textContent = item.subject || item.exchange_id;
+    const state = document.createElement("span");
+    state.className = `pill ${
+      item.state === "COMPLETE" ? "ok" : item.state === "INCOMPLETE" ? "bad" : ""
+    }`.trim();
+    state.textContent = item.state ?? "";
+    row.append(name, state);
+    history.append(row);
+  }
+}
+
+/* ---------- plumbing ---------- */
+
+function scheduleTick(handoffs) {
+  clearInterval(ticking);
+  if (handoffs.length === 0) {
     return;
   }
-  const details = [];
-  if (report.missing_files?.length) {
-    details.push(`Missing: ${report.missing_files.join(", ")}`);
-  }
-  if (report.invalid_files?.length) {
-    details.push(`Invalid: ${report.invalid_files.join(", ")}`);
-  }
-  validationReport.textContent = report.status === "COMPLETE"
-    ? "Complete. Main JSON and required artifacts validated."
-    : `Incomplete. ${details.join("\n") || "See validation report."}`;
-  validationReport.hidden = false;
+  // A live clock without a full refresh, so the elapsed pill stays honest
+  // between status pushes.
+  ticking = setInterval(() => {
+    for (const pill of flight.querySelectorAll("[data-since]")) {
+      pill.textContent = formatElapsed(pill.dataset.since, Date.now());
+    }
+  }, 1000);
 }
-
 
 function setBusy(busy) {
   goButton.disabled = busy || select.options.length === 0;
   resumeButton.disabled = busy;
   repairButton.disabled = busy;
-  for (const button of running.querySelectorAll("button")) {
+  for (const button of flight.querySelectorAll("button")) {
     button.disabled = busy;
   }
 }
 
+function showError(message) {
+  errorLine.textContent = message;
+  errorLine.hidden = false;
+}
+
+function clearError() {
+  errorLine.hidden = true;
+  errorLine.textContent = "";
+}
+
+function shortRoot(root) {
+  const parts = String(root).split(/[\\/]/).filter(Boolean);
+  return parts.slice(-2).join("/") || root;
+}
 
 async function send(message) {
   const response = await chrome.runtime.sendMessage(message);
@@ -224,6 +394,5 @@ async function send(message) {
   }
   return response.result;
 }
-
 
 refresh();

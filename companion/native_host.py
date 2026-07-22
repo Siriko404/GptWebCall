@@ -11,6 +11,8 @@ from typing import Any, BinaryIO
 from companion.core import (
     list_ready_calls,
     load_active_calls,
+    call_progress,
+    list_recent_calls,
     request_paths,
     resume_call,
     start_call,
@@ -26,6 +28,8 @@ ALLOWED_COMMANDS = {
     "calls.list_ready",
     "call.active",
     "calls.active",
+    "calls.progress",
+    "calls.recent",
     "call.go",
     "call.resume",
     "download.completed",
@@ -93,6 +97,12 @@ def dispatch(root: Path, message: dict[str, Any]) -> dict[str, Any] | list[Any] 
     if command == "calls.active":
         _require_keys(payload, set())
         return load_active_calls(root)
+    if command == "calls.progress":
+        _require_keys(payload, set())
+        return call_progress(root)
+    if command == "calls.recent":
+        _require_keys(payload, set())
+        return list_recent_calls(root)
     if command == "call.go":
         _require_keys(payload, {"exchange_id", "tab_id", "download_baseline"})
         exchange_id = _required_string(payload, "exchange_id")

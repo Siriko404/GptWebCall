@@ -248,6 +248,84 @@ def list_ready_calls(root: Path) -> list[dict[str, Any]]:
     return sorted(ready, key=lambda item: item["exchange_id"])
 
 
+def list_recent_calls(root: Path, limit: int = 12) -> list[dict[str, Any]]:
+    """Every exchange, newest first, for the panel's history.
+
+    Exchange ids begin with their timestamp, so sorting the name sorts the time.
+    """
+    calls_dir = Path(root).resolve() / "calls"
+    if not calls_dir.exists():
+        return []
+    recent: list[dict[str, Any]] = []
+    for manifest_path in calls_dir.glob("*/EXCHANGE_MANIFEST.json"):
+        manifest = _read_json_object(manifest_path, "EXCHANGE_MANIFEST")
+        recent.append(
+            {
+                "exchange_id": manifest.get("exchange_id"),
+                "subject": manifest.get("subject"),
+                "request_id": manifest.get("request_id"),
+                "state": manifest.get("state"),
+                "created_at": manifest.get("created_at"),
+            }
+        )
+    recent.sort(key=lambda item: str(item["exchange_id"]), reverse=True)
+    return recent[: max(0, int(limit))]
+
+
+def call_progress(root: Path) -> list[dict[str, Any]]:
+    """Which expected files have actually landed, for every active call.
+
+    The panel needs this to guard Done. Monitoring stops the moment Done is
+    clicked, so anything still in flight at that point is never collected, and
+    recovering it means copying files in by hand. Showing the checklist turns
+    that trap into something the operator can simply see.
+    """
+    root = Path(root).resolve()
+    progress: list[dict[str, Any]] = []
+    for active in load_active_calls(root):
+        exchange_id = str(active.get("exchange_id", ""))
+        try:
+            exchange_dir = _exchange_dir(root, exchange_id)
+            manifest = _read_json_object(
+                exchange_dir / "EXCHANGE_MANIFEST.json", "EXCHANGE_MANIFEST"
+            )
+        except (FileNotFoundError, ValueError):
+            continue
+        response_dir = exchange_dir / "response"
+        expected = [str(manifest.get("expected_main_json", ""))]
+        expected += [str(name) for name in manifest.get("expected_artifacts", [])]
+        files = []
+        for name in expected:
+            if not name:
+                continue
+            path = response_dir / name
+            arrived = path.is_file()
+            files.append(
+                {
+                    "filename": name,
+                    "arrived": arrived,
+                    "size": path.stat().st_size if arrived else 0,
+                    "is_main": name == manifest.get("expected_main_json"),
+                }
+            )
+        progress.append(
+            {
+                "exchange_id": exchange_id,
+                "subject": manifest.get("subject"),
+                "request_id": manifest.get("request_id"),
+                "started_at": active.get("started_at"),
+                "tab_id": active.get("tab_id"),
+                "monitoring": bool(active.get("monitoring")),
+                "files": files,
+                "received": sum(1 for item in files if item["arrived"]),
+                "expected": len(files),
+                "complete": bool(files) and all(item["arrived"] for item in files),
+            }
+        )
+    progress.sort(key=lambda item: str(item["exchange_id"]))
+    return progress
+
+
 def start_call(
     root: Path,
     exchange_id: str,

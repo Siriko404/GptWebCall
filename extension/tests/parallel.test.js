@@ -93,8 +93,10 @@ test("the side panel drives Done and Stop per exchange", async () => {
   const panel = await readFile(new URL("../sidepanel.js", import.meta.url), "utf8");
   const worker = await readFile(new URL("../service_worker.js", import.meta.url), "utf8");
 
-  assert.match(panel, /type: "DONE", exchangeId/);
-  assert.match(panel, /type: "STOP", exchangeId/);
+  // Matched loosely across lines: what matters is that both commands carry an
+  // exchange id, not how the call is wrapped.
+  assert.match(panel, /"DONE",[\s\S]{0,40}exchangeId/);
+  assert.match(panel, /"STOP",[\s\S]{0,40}exchangeId/);
   assert.match(worker, /nativeCommand\("calls\.active"\)/);
   assert.match(worker, /exchange_id: exchangeId/);
 });

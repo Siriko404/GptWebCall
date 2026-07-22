@@ -97,13 +97,21 @@ async function dropHandoff(exchangeId) {
 
 
 async function getStatus() {
-  const [ready, active, stored] = await Promise.all([
+  const [health, ready, active, progress, recent, stored] = await Promise.all([
+    nativeCommand("health"),
     nativeCommand("calls.list_ready"),
     nativeCommand("calls.active"),
+    nativeCommand("calls.progress"),
+    nativeCommand("calls.recent"),
     chrome.storage.session.get(["handoffs", "lastReport", "lastHandoff"]),
   ]);
   const handoffs = stored.handoffs ?? {};
   return {
+    root: health?.root ?? null,
+    // Which expected files have actually landed, per running call. The panel
+    // holds Done back until they all have, because Done stops monitoring.
+    progress,
+    recent,
     ready,
     // An empty array is truthy, so returning [] here disables Go in any caller
     // that tests `if (state.active)`. Absence must be falsy.
