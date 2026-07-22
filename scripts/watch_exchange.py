@@ -88,6 +88,17 @@ def describe(exchange_dir: Path, manifest: dict) -> str:
 
     if state == "COMPLETE":
         checked = ", ".join(report.get("checked_files", [])) or main
+        # Delivery intact is not the same as work finished. A response that
+        # declares its own gaps arrives as a perfect pair of files and is worth
+        # reading immediately; saying only READY would hide the gaps, and saying
+        # anything like FAILED would send the reader to repair a good response.
+        response_status = report.get("response_status")
+        if response_status and response_status != "COMPLETE":
+            note = {
+                "PARTIAL": "responder declared gaps, files are intact, read it and check limitations",
+                "BLOCKED": "responder says it could not do the work, files are intact, read why",
+            }.get(response_status, "responder status " + str(response_status))
+            return f"READY ({response_status})  {subject}  {note}  in {where}"
         return f"READY  {subject}  validated: {checked}  in {where}"
 
     if state == "INCOMPLETE":

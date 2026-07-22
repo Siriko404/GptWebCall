@@ -219,7 +219,150 @@ class DownloadTests(unittest.TestCase):
         self.assertEqual(report["status"], "COMPLETE")
         self.assertEqual(report["missing_files"], [])
         self.assertEqual(report["invalid_files"], [])
+        self.assertEqual(report["response_status"], "COMPLETE")
+        self.assertTrue(report["work_complete"])
         self.assertEqual(validate_response(self.exchange), report)
+
+    def test_partial_response_delivered_intact_is_not_invalid(self):
+        """A responder that declares its own gaps must not be told it is corrupt.
+
+        This is the regression. Any status other than COMPLETE used to put the
+        main JSON into invalid_files, the same bucket as a failed hash, so the
+        exchange went INCOMPLETE and every reader was told to repair a response
+        whose files were flawless. Prompts in this project explicitly ask for
+        PARTIAL when something cannot be settled, so the system punished the one
+        behaviour it had asked for, and it did so on every such call.
+
+        Nothing covered this case, which is why it shipped. The delivery facts
+        and the work facts are asserted separately here so they cannot be
+        conflated again without a test going red.
+        """
+        main = self.download("result.json", self.main_json_bytes(status="PARTIAL"))
+        artifact = self.download("report.md", self.report_bytes)
+        handle_completed_download(self.root, self.completed(3, main))
+        handle_completed_download(self.root, self.completed(4, artifact))
+
+        report = finish_call(self.root)
+
+        self.assertEqual(report["status"], "COMPLETE")
+        self.assertEqual(report["invalid_files"], [])
+        self.assertEqual(report["missing_files"], [])
+        self.assertEqual(report["response_status"], "PARTIAL")
+        self.assertFalse(report["work_complete"])
+        manifest = json.loads(
+            (self.exchange / "EXCHANGE_MANIFEST.json").read_text(encoding="utf-8")
+        )
+        self.assertEqual(manifest["state"], "COMPLETE")
+
+    def test_blocked_response_delivered_intact_is_not_invalid(self):
+        main = self.download("result.json", self.main_json_bytes(status="BLOCKED"))
+        artifact = self.download("report.md", self.report_bytes)
+        handle_completed_download(self.root, self.completed(3, main))
+        handle_completed_download(self.root, self.completed(4, artifact))
+
+        report = finish_call(self.root)
+
+        self.assertEqual(report["status"], "COMPLETE")
+        self.assertEqual(report["invalid_files"], [])
+        self.assertEqual(report["response_status"], "BLOCKED")
+        self.assertFalse(report["work_complete"])
+
+    def test_a_corrupt_artifact_is_still_invalid_whatever_the_status_says(self):
+        """The fix must not soften the check it was carved out of.
+
+        A hash mismatch is a real defect and has to keep reporting as one no
+        matter how the responder describes its own work. Written against
+        validate_response directly, because the download handler refuses a
+        mismatching file on arrival and it would never reach the validator by
+        the normal route.
+        """
+        response = self.exchange / "response"
+        response.mkdir(parents=True, exist_ok=True)
+        (response / "result.json").write_bytes(
+            self.main_json_bytes(status="PARTIAL", artifact_digest="0" * 64)
+        )
+        (response / "report.md").write_bytes(self.report_bytes)
+
+        report = validate_response(self.exchange)
+
+        self.assertEqual(report["status"], "INCOMPLETE")
+        self.assertEqual(report["invalid_files"], ["report.md"])
+        self.assertEqual(report["response_status"], "PARTIAL")
+
+    def test_an_expected_artifact_declared_absent_is_not_reported_missing(self):
+        """Declaring an artifact was not created is a report, not a silent drop.
+
+        The expected-artifact backstop exists so a deliverable the main JSON
+        forgot cannot vanish quietly. A response that names the file and marks
+        it NOT_CREATED has not forgotten it, so calling it missing would punish
+        the same honesty the status fix stopped punishing.
+        """
+        exchange, main_path = self._exchange_expecting_an_artifact()
+        payload = {
+            "request_id": "request_declared",
+            "status": "BLOCKED",
+            "artifacts_manifest": [
+                {"filename": "declared_outputs.zip", "status": "NOT_CREATED"}
+            ],
+            "delivery": ["declared_result.json"],
+        }
+        main_path.write_text(json.dumps(payload), encoding="utf-8")
+
+        report = validate_response(exchange)
+
+        self.assertEqual(report["missing_files"], [])
+        self.assertEqual(report["status"], "COMPLETE")
+        self.assertEqual(report["response_status"], "BLOCKED")
+
+    def test_an_expected_artifact_silently_dropped_is_still_missing(self):
+        """The other half of that carve-out, so it cannot be widened by accident."""
+        exchange, main_path = self._exchange_expecting_an_artifact()
+        payload = {
+            "request_id": "request_declared",
+            "status": "COMPLETE",
+            "artifacts_manifest": [],
+            "delivery": ["declared_result.json"],
+        }
+        main_path.write_text(json.dumps(payload), encoding="utf-8")
+
+        report = validate_response(exchange)
+
+        self.assertEqual(report["missing_files"], ["declared_outputs.zip"])
+        self.assertEqual(report["status"], "INCOMPLETE")
+
+    def _exchange_expecting_an_artifact(self):
+        """A prepared exchange that declares expected_artifacts.
+
+        The shared fixture declares none, so the backstop it guards never runs
+        there. A test of that backstop needs an exchange that actually expects
+        something.
+        """
+        request = self.write_source(
+            "declared_request.json", {"request_id": "request_declared"}
+        )
+        schema = self.write_source("declared_schema.json", {"type": "object"})
+        spec = {
+            "subject": "Declared artifact call",
+            "request_id": "request_declared",
+            "expected_main_json": "declared_result.json",
+            "expected_artifacts": ["declared_outputs.zip"],
+            "prompt_text": "Return files only.\n",
+            "input_files": [
+                {"path": str(request), "filename": "WEB_REVIEW_REQUEST.json"},
+                {"path": str(schema), "filename": "WEB_RESPONSE_SCHEMA.json"},
+            ],
+        }
+        manifest = prepare_call(
+            self.root,
+            spec,
+            datetime(2026, 7, 14, 16, 0, 0, tzinfo=timezone(timedelta(hours=-4))),
+        )
+        exchange = self.root / "calls" / manifest["exchange_id"]
+        (exchange / "response").mkdir(parents=True, exist_ok=True)
+        # validate_response reads the expected main name from the manifest, so
+        # the caller writes under whatever name was declared rather than
+        # guessing one.
+        return exchange, exchange / "response" / manifest["expected_main_json"]
 
 
 if __name__ == "__main__":

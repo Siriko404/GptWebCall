@@ -222,8 +222,29 @@ def validate_response(exchange_dir: Path) -> dict[str, Any]:
         return _validation_report(manifest, expected_main, missing, invalid, checked)
 
     checked.append(expected_main)
-    if main["status"] != "COMPLETE":
-        invalid.append(expected_main)
+
+    # Two different facts, kept apart deliberately.
+    #
+    # Whether the DELIVERY is intact is this function's job: did every promised
+    # file arrive, does each one hash to what the response said it would. That is
+    # objective and it is what "invalid" must mean, because "invalid" tells the
+    # caller to stop reading and repair.
+    #
+    # Whether the WORK is finished is the responder's own self-report, and it is
+    # none of this function's business. PARTIAL means the assignment was answered
+    # with declared gaps, which prompts in this project explicitly ask for. It
+    # arrives as a perfectly formed pair of files.
+    #
+    # These were previously conflated: any status other than COMPLETE put the main
+    # JSON in invalid_files, the same bucket as a corrupt download. The exchange
+    # then went to INCOMPLETE and every downstream reader was told to repair a
+    # response that was flawless and worth reading. The contradiction sat inside
+    # this one module, since _parse_main_response accepts PARTIAL and BLOCKED as
+    # valid statuses and this function then called the file invalid for carrying
+    # one. Prompts that ask for honesty were the ones that triggered it, so the
+    # system punished exactly the behaviour it requested.
+    response_status = str(main["status"])
+
     for artifact in main["artifacts_manifest"]:
         if artifact["status"] != "CREATED":
             continue
@@ -241,11 +262,26 @@ def validate_response(exchange_dir: Path) -> dict[str, Any]:
     # An artifact the call was prepared to expect must arrive even when the main
     # JSON forgets to declare it, otherwise a silently dropped deliverable
     # validates as complete.
+    #
+    # Forgetting is not the same as declaring. A response that names the artifact
+    # and marks it MISSING or NOT_CREATED has told us plainly that it does not
+    # exist, which is a report rather than a silent drop, and calling it missing
+    # again would punish the same honesty this function stopped punishing above.
+    declared_absent = {
+        str(artifact["filename"]).casefold()
+        for artifact in main["artifacts_manifest"]
+        if artifact["status"] in {"MISSING", "NOT_CREATED"}
+    }
     for declared in manifest.get("expected_artifacts", []):
         name = _safe_name(str(declared), "expected artifact filename")
-        if not (exchange / "response" / name).is_file():
-            missing.append(name)
-    return _validation_report(manifest, expected_main, missing, invalid, checked)
+        if (exchange / "response" / name).is_file():
+            continue
+        if name.casefold() in declared_absent:
+            continue
+        missing.append(name)
+    return _validation_report(
+        manifest, expected_main, missing, invalid, checked, response_status
+    )
 
 
 def finalize_exchange(root: Path, exchange_id: str) -> dict[str, Any]:
@@ -274,12 +310,21 @@ def _validation_report(
     missing: list[str],
     invalid: list[str],
     checked: list[str],
+    response_status: str | None = None,
 ) -> dict[str, Any]:
+    # "status" is about the delivery: every promised file arrived and hashed
+    # correctly. "response_status" is the responder's own account of whether it
+    # finished the work. A PARTIAL response delivered intact is status COMPLETE
+    # and response_status PARTIAL, which is the honest description of both facts
+    # and lets a reader decide what to do rather than being told to repair
+    # something that is not broken.
     return {
         "schema_version": 1,
         "exchange_id": manifest["exchange_id"],
         "request_id": manifest["request_id"],
         "status": "COMPLETE" if not missing and not invalid else "INCOMPLETE",
+        "response_status": response_status,
+        "work_complete": response_status == "COMPLETE",
         "main_json": expected_main,
         "missing_files": sorted(set(missing)),
         "invalid_files": sorted(set(invalid)),

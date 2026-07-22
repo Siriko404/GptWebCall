@@ -48,6 +48,24 @@ The archive is byte-identical for identical inputs. Zip entries normally carry a
 
 **One thing this rule costs you.** Natively attached files are read directly. An archive has to be extracted with the code tool first, and a model that extracts carelessly can skim rather than read. For any call where thoroughness is the point, make the prompt require an inventory: unzip, list every extracted file with its byte size, and echo that list before answering. A shallow read then shows up in the reply instead of hiding in it.
 
+## Delivery integrity is not work completeness
+
+**These are two different facts and the validator reports them separately. Conflating them was a real bug that fired on every honest response.**
+
+`status` in `VALIDATION_REPORT.json` describes the **delivery**: every promised file arrived and each one hashes to what the response said it would. That is objective, computable, and it is what `invalid_files` means. A name in `invalid_files` tells you to stop reading and repair.
+
+`response_status` is the responder's **own account of its work**, one of `COMPLETE`, `PARTIAL` or `BLOCKED`, reported and never punished. `work_complete` is the convenience boolean.
+
+A `PARTIAL` response delivered intact is therefore `status: COMPLETE`, `response_status: PARTIAL`. **Read it.** The files are perfect and the responder has told you where its gaps are.
+
+The bug: any status other than `COMPLETE` used to put the main JSON into `invalid_files`, alongside corrupt downloads and hash mismatches. The exchange went to `INCOMPLETE` and every reader was told to repair a flawless response. The contradiction lived inside one module, since the parser accepted `PARTIAL` as a valid status and the validator then called the file invalid for carrying one.
+
+What made it bite repeatedly is that prompts here explicitly ask for `PARTIAL` when something cannot be settled, because a partial answer that admits its gaps is worth more than a confident one built on a skim. So the system punished precisely the behaviour it requested, and did so on every such call. It shipped because no test covered a `PARTIAL` response that arrived intact.
+
+The same principle governs the expected-artifact backstop. An artifact the call expected must arrive even when the main JSON forgets to declare it, so a dropped deliverable cannot validate as complete. But forgetting is not declaring: a response that names the artifact and marks it `MISSING` or `NOT_CREATED` has reported its absence rather than hidden it, and is not counted missing again.
+
+**When you write a prompt, keep asking for `PARTIAL`.** It no longer costs anything.
+
 ## Filenames are the routing key
 
 **This is the one rule that makes the whole system work. Read it before writing any preparation spec.**
