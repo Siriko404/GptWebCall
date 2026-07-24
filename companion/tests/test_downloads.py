@@ -9,6 +9,7 @@ from companion.core import load_active_call, prepare_call, start_call
 from companion.downloads import (
     finish_call,
     handle_completed_download,
+    ingest_from_downloads,
     validate_response,
 )
 
@@ -329,6 +330,152 @@ class DownloadTests(unittest.TestCase):
 
         self.assertEqual(report["missing_files"], ["declared_outputs.zip"])
         self.assertEqual(report["status"], "INCOMPLETE")
+
+    def valid_zip_bytes(self):
+        import io
+        import zipfile
+
+        buffer = io.BytesIO()
+        with zipfile.ZipFile(buffer, "w") as archive:
+            archive.writestr("inner.md", "content\n")
+        return buffer.getvalue()
+
+    # ---- ingest from Downloads (the capture fix) ----
+
+    def test_ingest_pulls_expected_main_from_downloads(self):
+        self.download("result.json", self.main_json_bytes(artifacts=False))
+
+        result = ingest_from_downloads(
+            self.root, self.manifest["exchange_id"], self.downloads
+        )
+
+        self.assertIn("result.json", result["ingested"])
+        self.assertTrue((self.exchange / "response" / "result.json").is_file())
+        # the Downloads copy is left in place as the record of truth
+        self.assertTrue((self.downloads / "result.json").exists())
+
+    def test_ingest_matches_browser_suffix(self):
+        self.download("result (1).json", self.main_json_bytes(artifacts=False))
+
+        result = ingest_from_downloads(
+            self.root, self.manifest["exchange_id"], self.downloads
+        )
+
+        self.assertIn("result.json", result["ingested"])
+        self.assertTrue((self.exchange / "response" / "result.json").is_file())
+
+    def test_ingest_never_overwrites_different_bytes(self):
+        (self.exchange / "response").mkdir(parents=True, exist_ok=True)
+        (self.exchange / "response" / "result.json").write_bytes(b"already here")
+        self.download("result.json", self.main_json_bytes(artifacts=False))
+
+        result = ingest_from_downloads(
+            self.root, self.manifest["exchange_id"], self.downloads
+        )
+
+        self.assertIn("result.json", result["conflicts"])
+        self.assertEqual(
+            (self.exchange / "response" / "result.json").read_bytes(), b"already here"
+        )
+
+    def test_ingest_missing_file_is_reported_not_found(self):
+        result = ingest_from_downloads(
+            self.root, self.manifest["exchange_id"], self.downloads
+        )
+
+        self.assertEqual(result["not_found"], ["result.json"])
+
+    def test_finish_call_ingests_from_downloads_then_validates(self):
+        self.download("result.json", self.main_json_bytes(artifacts=False))
+
+        report = finish_call(self.root, downloads_dir=self.downloads)
+
+        self.assertEqual(report["status"], "COMPLETE")
+        self.assertTrue((self.exchange / "response" / "result.json").is_file())
+
+    # ---- tolerate a junk model manifest on byte-perfect files ----
+
+    def test_junk_manifest_on_sound_files_is_complete_but_unverified(self):
+        exchange, main_path = self._exchange_expecting_an_artifact()
+        # A manifest shaped the way ChatGPT actually returned it: main JSON listed
+        # as its own artifact, no per-file status, prose in delivery.
+        payload = {
+            "request_id": "request_declared",
+            "status": "COMPLETE",
+            "artifacts_manifest": [
+                {"filename": "declared_result.json", "role": "main"},
+                {"filename": "declared_outputs.zip", "role": "archive"},
+            ],
+            "delivery": ["declared_result.json", "declared_outputs.zip containing x"],
+        }
+        main_path.write_text(json.dumps(payload), encoding="utf-8")
+        (exchange / "response" / "declared_outputs.zip").write_bytes(
+            self.valid_zip_bytes()
+        )
+
+        report = validate_response(exchange)
+
+        self.assertEqual(report["status"], "COMPLETE")
+        self.assertFalse(report["manifest_verified"])
+        self.assertEqual(report["response_status"], "COMPLETE")
+        self.assertEqual(report["invalid_files"], [])
+
+    def test_junk_manifest_with_missing_artifact_is_still_incomplete(self):
+        exchange, main_path = self._exchange_expecting_an_artifact()
+        payload = {
+            "request_id": "request_declared",
+            "status": "COMPLETE",
+            "artifacts_manifest": [{"filename": "declared_result.json", "role": "main"}],
+            "delivery": ["declared_result.json"],
+        }
+        main_path.write_text(json.dumps(payload), encoding="utf-8")
+
+        report = validate_response(exchange)
+
+        self.assertEqual(report["status"], "INCOMPLETE")
+        self.assertIn("declared_outputs.zip", report["missing_files"])
+        self.assertFalse(report["manifest_verified"])
+
+    def test_junk_manifest_with_corrupt_archive_is_invalid(self):
+        exchange, main_path = self._exchange_expecting_an_artifact()
+        payload = {
+            "request_id": "request_declared",
+            "status": "COMPLETE",
+            "artifacts_manifest": [{"filename": "x", "role": "archive"}],
+            "delivery": ["declared_result.json"],
+        }
+        main_path.write_text(json.dumps(payload), encoding="utf-8")
+        (exchange / "response" / "declared_outputs.zip").write_bytes(b"not a real zip")
+
+        report = validate_response(exchange)
+
+        self.assertEqual(report["status"], "INCOMPLETE")
+        self.assertIn("declared_outputs.zip", report["invalid_files"])
+
+    def test_broken_main_json_still_invalid_under_fallback(self):
+        exchange, main_path = self._exchange_expecting_an_artifact()
+        main_path.write_text(
+            json.dumps({"request_id": "wrong", "status": "COMPLETE"}), encoding="utf-8"
+        )
+        (exchange / "response" / "declared_outputs.zip").write_bytes(
+            self.valid_zip_bytes()
+        )
+
+        report = validate_response(exchange)
+
+        self.assertEqual(report["status"], "INCOMPLETE")
+        self.assertIn("declared_result.json", report["invalid_files"])
+
+    def test_strict_manifest_stays_verified(self):
+        response = self.exchange / "response"
+        response.mkdir(parents=True, exist_ok=True)
+        (response / "result.json").write_bytes(self.main_json_bytes())
+        (response / "report.md").write_bytes(self.report_bytes)
+
+        report = validate_response(self.exchange)
+
+        self.assertEqual(report["status"], "COMPLETE")
+        self.assertTrue(report["manifest_verified"])
 
     def _exchange_expecting_an_artifact(self):
         """A prepared exchange that declares expected_artifacts.

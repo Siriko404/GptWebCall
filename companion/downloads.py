@@ -5,6 +5,8 @@ import os
 import re
 import shutil
 import tempfile
+import zipfile
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -113,7 +115,163 @@ def handle_completed_download(root: Path, download: dict[str, Any]) -> dict[str,
         return {"status": "IGNORED", "reason": "not listed by the main JSON"}
 
 
-def finish_call(root: Path, exchange_id: str | None = None) -> dict[str, Any]:
+def ingest_from_downloads(
+    root: Path, exchange_id: str, downloads_dir: Path
+) -> dict[str, Any]:
+    """Pull an exchange's expected files straight out of the Downloads folder.
+
+    Chrome always writes a download to the Downloads folder first; the extension
+    was then relied on to move it into the exchange, and when that step failed
+    the files sat in Downloads and validation found nothing. This function makes
+    the companion do the move itself, keyed off the prepare-time contract
+    (expected_main_json and expected_artifacts) rather than anything the model
+    self-reports. It is deliberately conservative: it copies by exact expected
+    name (Chrome "(1)" suffixes included), takes the newest match no older than
+    the call, never overwrites different bytes, and leaves the Downloads copy in
+    place. It is a no-op when the files are already collected.
+    """
+    root = Path(root).resolve()
+    downloads_dir = Path(downloads_dir)
+    exchange = _exchange_dir(root, exchange_id)
+    manifest = _read_json_object(
+        exchange / "EXCHANGE_MANIFEST.json", "EXCHANGE_MANIFEST"
+    )
+    expected = [
+        _safe_name(str(manifest["expected_main_json"]), "expected main JSON filename")
+    ]
+    for artifact in manifest.get("expected_artifacts", []):
+        expected.append(_safe_name(str(artifact), "expected artifact filename"))
+
+    ingested: list[str] = []
+    already: list[str] = []
+    conflicts: list[str] = []
+    not_found: list[str] = []
+    if not downloads_dir.is_dir():
+        return {
+            "status": "NO_DOWNLOADS_DIR",
+            "downloads_dir": str(downloads_dir),
+            "not_found": expected,
+        }
+
+    floor = _download_floor(manifest.get("created_at"))
+    for name in expected:
+        destination = exchange / "response" / name
+        candidate = _newest_download_match(downloads_dir, name, floor)
+        if candidate is None:
+            (already if destination.is_file() else not_found).append(name)
+            continue
+        outcome = _safe_copy(candidate, destination)
+        if outcome == "COPIED":
+            ingested.append(name)
+        elif outcome == "IDENTICAL":
+            already.append(name)
+        else:
+            conflicts.append(name)
+    return {
+        "status": "OK",
+        "downloads_dir": str(downloads_dir),
+        "ingested": ingested,
+        "already_present": already,
+        "conflicts": conflicts,
+        "not_found": not_found,
+    }
+
+
+def _download_floor(created_at: Any) -> float | None:
+    """The earliest mtime an ingested download may have, from the call's own time.
+
+    Expected filenames are released for reuse once a call finishes, so a stale
+    file left in Downloads by an earlier call that reused the name must not be
+    picked up. The download finished after the call was prepared, so its mtime is
+    at or after created_at.
+    """
+    if not isinstance(created_at, str):
+        return None
+    try:
+        return datetime.fromisoformat(created_at).timestamp()
+    except ValueError:
+        return None
+
+
+def _newest_download_match(
+    downloads_dir: Path, expected: str, floor: float | None
+) -> Path | None:
+    best: Path | None = None
+    best_mtime = -1.0
+    for entry in downloads_dir.iterdir():
+        if not entry.is_file() or entry.name.endswith(".crdownload"):
+            continue
+        if not _matches_expected_name(entry.name, expected):
+            continue
+        mtime = entry.stat().st_mtime
+        if floor is not None and mtime < floor:
+            continue
+        if mtime > best_mtime:
+            best, best_mtime = entry, mtime
+    return best
+
+
+def _safe_copy(source: Path, destination: Path) -> str:
+    """Copy a download into the response dir, leaving the original in Downloads.
+
+    Mirrors _safe_move's guard: an identical file is a no-op, and different bytes
+    already in place are never overwritten. Unlike _safe_move it keeps the source
+    so a re-validate remains possible and Downloads stays the record of truth.
+    """
+    source = source.resolve(strict=True)
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    source_digest, source_size = _sha256(source)
+    if destination.exists():
+        destination_digest, destination_size = _sha256(destination)
+        if source_digest == destination_digest and source_size == destination_size:
+            return "IDENTICAL"
+        return "CONFLICT"
+    descriptor, temporary_name = tempfile.mkstemp(
+        prefix=".incoming-", suffix=".tmp", dir=destination.parent
+    )
+    os.close(descriptor)
+    temporary = Path(temporary_name)
+    try:
+        with source.open("rb") as incoming, temporary.open("wb") as outgoing:
+            shutil.copyfileobj(incoming, outgoing)
+            outgoing.flush()
+            os.fsync(outgoing.fileno())
+        copied_digest, copied_size = _sha256(temporary)
+        if copied_digest != source_digest or copied_size != source_size:
+            raise OSError(f"copied download changed: {source.name}")
+        os.replace(temporary, destination)
+    except BaseException:
+        temporary.unlink(missing_ok=True)
+        raise
+    return "COPIED"
+
+
+def _structurally_sound(path: Path) -> bool:
+    """A cheap integrity check for a delivered artifact when its declared hash is
+    unusable: an archive must open and pass its own CRCs, JSON must parse, and any
+    other file must be non-empty. It cannot catch a truncated member inside an
+    archive, so the mandatory human read remains the real backstop."""
+    suffix = path.suffix.casefold()
+    try:
+        if suffix == ".zip":
+            if not zipfile.is_zipfile(path):
+                return False
+            with zipfile.ZipFile(path) as archive:
+                return archive.testzip() is None
+        if suffix == ".json":
+            with path.open("r", encoding="utf-8") as handle:
+                json.load(handle)
+            return True
+        return path.stat().st_size > 0
+    except (OSError, ValueError, zipfile.BadZipFile):
+        return False
+
+
+def finish_call(
+    root: Path,
+    exchange_id: str | None = None,
+    downloads_dir: Path | None = None,
+) -> dict[str, Any]:
     root = Path(root).resolve()
     with state_lock(root):
         active = load_active_call(root, exchange_id)
@@ -129,6 +287,9 @@ def finish_call(root: Path, exchange_id: str | None = None) -> dict[str, Any]:
         if main is not None:
             _release_pending(root, active, exchange, main, _supersede_round(active))
             _save_active(root, active)
+
+        if downloads_dir is not None:
+            ingest_from_downloads(root, active["exchange_id"], downloads_dir)
 
         report = validate_response(exchange)
         _write_json_atomic(exchange / "validation" / "VALIDATION_REPORT.json", report)
@@ -218,8 +379,22 @@ def validate_response(exchange_dir: Path) -> dict[str, Any]:
     try:
         main = _parse_main_response(main_path, manifest["request_id"], expected_main)
     except ValueError:
-        invalid.append(expected_main)
-        return _validation_report(manifest, expected_main, missing, invalid, checked)
+        # The strict contract failed. That is one of two very different things and
+        # they used to be conflated: the file might be genuinely broken (not JSON,
+        # wrong request_id, unknown status), or its BYTES might be perfect and only
+        # the model's self-authored artifacts_manifest is malformed. A defense
+        # planning call routinely returns the latter, and marking a byte-perfect
+        # delivery "invalid, repair it" is the exact false alarm being fixed here.
+        #
+        # So fall back to the prepare-time contract, which the model cannot
+        # corrupt: identity must still hold, and every expected file must be
+        # present and structurally sound. If it is, the delivery is COMPLETE with
+        # manifest_verified False, telling the reader the metadata was unusable and
+        # semantic acceptance is doing the verifying that a good hash otherwise
+        # would have. A genuinely broken main JSON still fails.
+        return _validate_without_manifest(
+            exchange, manifest, main_path, expected_main, missing, invalid, checked
+        )
 
     checked.append(expected_main)
 
@@ -280,11 +455,58 @@ def validate_response(exchange_dir: Path) -> dict[str, Any]:
             continue
         missing.append(name)
     return _validation_report(
-        manifest, expected_main, missing, invalid, checked, response_status
+        manifest, expected_main, missing, invalid, checked, response_status,
+        manifest_verified=True,
     )
 
 
-def finalize_exchange(root: Path, exchange_id: str) -> dict[str, Any]:
+def _validate_without_manifest(
+    exchange: Path,
+    manifest: dict[str, Any],
+    main_path: Path,
+    expected_main: str,
+    missing: list[str],
+    invalid: list[str],
+    checked: list[str],
+) -> dict[str, Any]:
+    """Validate a delivery whose model-authored manifest is unusable, by trusting
+    only the prepare-time contract and structural soundness of the bytes."""
+    try:
+        raw = _read_json_object(main_path, "main response")
+    except ValueError:
+        invalid.append(expected_main)
+        return _validation_report(manifest, expected_main, missing, invalid, checked)
+    if raw.get("request_id") != manifest["request_id"] or raw.get("status") not in {
+        "COMPLETE",
+        "PARTIAL",
+        "BLOCKED",
+    }:
+        invalid.append(expected_main)
+        return _validation_report(manifest, expected_main, missing, invalid, checked)
+
+    response_status = str(raw["status"])
+    if _structurally_sound(main_path):
+        checked.append(expected_main)
+    else:
+        invalid.append(expected_main)
+    for declared in manifest.get("expected_artifacts", []):
+        name = _safe_name(str(declared), "expected artifact filename")
+        path = exchange / "response" / name
+        if not path.is_file():
+            missing.append(name)
+        elif _structurally_sound(path):
+            checked.append(name)
+        else:
+            invalid.append(name)
+    return _validation_report(
+        manifest, expected_main, missing, invalid, checked, response_status,
+        manifest_verified=False,
+    )
+
+
+def finalize_exchange(
+    root: Path, exchange_id: str, downloads_dir: Path | None = None
+) -> dict[str, Any]:
     root = Path(root).resolve()
     if load_active_call(root, exchange_id) is not None:
         raise RuntimeError("an active call must be finished with done or stop")
@@ -293,6 +515,8 @@ def finalize_exchange(root: Path, exchange_id: str) -> dict[str, Any]:
     manifest = _read_json_object(manifest_path, "EXCHANGE_MANIFEST")
     if manifest.get("state") not in {"PREPARED", "INCOMPLETE", "COMPLETE"}:
         raise RuntimeError(f"exchange cannot be validated from state {manifest.get('state')}")
+    if downloads_dir is not None:
+        ingest_from_downloads(root, exchange_id, downloads_dir)
     report = validate_response(exchange)
     _write_json_atomic(exchange / "validation" / "VALIDATION_REPORT.json", report)
     manifest["state"] = report["status"]
@@ -311,6 +535,7 @@ def _validation_report(
     invalid: list[str],
     checked: list[str],
     response_status: str | None = None,
+    manifest_verified: bool = True,
 ) -> dict[str, Any]:
     # "status" is about the delivery: every promised file arrived and hashed
     # correctly. "response_status" is the responder's own account of whether it
@@ -318,6 +543,11 @@ def _validation_report(
     # and response_status PARTIAL, which is the honest description of both facts
     # and lets a reader decide what to do rather than being told to repair
     # something that is not broken.
+    #
+    # "manifest_verified" is a third, separate fact: whether the model's own
+    # artifacts_manifest was well-formed enough to hash-verify each file against.
+    # False means the bytes are present and structurally sound but the declared
+    # hashes were unusable, so semantic acceptance carries the integrity load.
     return {
         "schema_version": 1,
         "exchange_id": manifest["exchange_id"],
@@ -325,6 +555,7 @@ def _validation_report(
         "status": "COMPLETE" if not missing and not invalid else "INCOMPLETE",
         "response_status": response_status,
         "work_complete": response_status == "COMPLETE",
+        "manifest_verified": manifest_verified,
         "main_json": expected_main,
         "missing_files": sorted(set(missing)),
         "invalid_files": sorted(set(invalid)),

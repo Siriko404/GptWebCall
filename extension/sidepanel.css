@@ -69,6 +69,7 @@ body {
 }
 
 .bar-left { display: flex; gap: 10px; align-items: center; min-width: 0; }
+.bar-right { display: flex; gap: 8px; align-items: center; flex: none; }
 
 .mark {
   display: grid;

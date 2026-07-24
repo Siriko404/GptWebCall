@@ -32,10 +32,15 @@ const historyToggle = el("history-toggle");
 const health = el("health");
 const companionLine = el("companion-line");
 const errorLine = el("error");
+const reloadButton = el("reload-button");
 
 let repairTarget = null;
 let forced = new Set();
 let ticking = null;
+
+// Reloads the whole extension, the manual fix for a stale build that has
+// stopped auto-capturing downloads. It also reloads this panel, so no refresh.
+reloadButton.addEventListener("click", () => chrome.runtime.reload());
 
 goButton.addEventListener("click", () => run(() => send({ type: "GO", exchangeId: select.value })));
 resumeButton.addEventListener("click", () => run(() => send({ type: "RESUME" })));

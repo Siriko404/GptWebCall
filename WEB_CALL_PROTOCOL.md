@@ -219,6 +219,8 @@ ChatGPT receives this schema as an instruction. The companion independently enfo
 }
 ```
 
+**The response schema is a hard contract. Pin every manifest field and tell ChatGPT to reproduce the field names verbatim.** The template above leaves `artifacts_manifest` as a bare array, which is a trap. ChatGPT will invent plausible but wrong keys for each entry (`name`, `type`, `contains`) instead of the ones the deterministic validator requires (`filename`, `status`, `media_type`, `size`, `sha256`). The result is `ARTIFACT_ENTRY_INVALID: filename null` and a false `INCOMPLETE` on work whose actual content is correct, which reads as the validator being broken when the real fault is a loose schema. Two mitigations, use both: (1) in `WEB_RESPONSE_SCHEMA.json`, fully specify the `artifacts_manifest` item with its `required` keys rather than typing it `"array"`; (2) in `WEB_REVIEW_REQUEST.json` and the prompt, instruct the model in one line to emit the response JSON using the schema's exact field names, verbatim, and to paraphrase nothing in the manifest. A model told only "follow the schema" paraphrases keys; a model told "reproduce these field names verbatim" does not.
+
 ### Preparation-spec template
 
 Store this temporary spec anywhere safe. Operational scratch under `state\` is ignored by Git.

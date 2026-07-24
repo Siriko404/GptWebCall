@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -50,11 +51,15 @@ def run(
             else:
                 result = records[0] if len(records) == 1 else records
         elif command == "done":
-            result = finish_call(root, options.exchange)
+            result = finish_call(
+                root, options.exchange, _downloads_dir(options.downloads_dir)
+            )
         elif command == "stop":
             result = stop_call(root, options.exchange)
         elif command == "validate":
-            result = finalize_exchange(root, options.exchange)
+            result = finalize_exchange(
+                root, options.exchange, _downloads_dir(options.downloads_dir)
+            )
         elif command == "defects":
             result = collect_defects(_exchange_dir(root, options.exchange))
         elif command == "repair":
@@ -96,16 +101,29 @@ def _parser() -> argparse.ArgumentParser:
     subcommands.add_parser("active", exit_on_error=False)
     done = subcommands.add_parser("done", exit_on_error=False)
     done.add_argument("--exchange", default=None)
+    done.add_argument("--downloads-dir", default=None)
     stop = subcommands.add_parser("stop", exit_on_error=False)
     stop.add_argument("--exchange", default=None)
     validate = subcommands.add_parser("validate", exit_on_error=False)
     validate.add_argument("--exchange", required=True)
+    validate.add_argument("--downloads-dir", default=None)
     defects = subcommands.add_parser("defects", exit_on_error=False)
     defects.add_argument("--exchange", required=True)
     repair = subcommands.add_parser("repair", exit_on_error=False)
     repair.add_argument("--exchange", required=True)
     repair.add_argument("--tab", type=int, default=None)
     return parser
+
+
+def _downloads_dir(explicit: str | None) -> Path:
+    """Where Chrome writes downloads before they are ingested.
+
+    Resolution order: the explicit flag, then GPTWEBCALL_DOWNLOADS_DIR, then the
+    user's ~/Downloads. The companion pulls the expected files from here so a
+    failed extension move no longer leaves them stranded.
+    """
+    chosen = explicit or os.environ.get("GPTWEBCALL_DOWNLOADS_DIR")
+    return Path(chosen) if chosen else Path.home() / "Downloads"
 
 
 def main(argv: list[str] | None = None) -> int:
