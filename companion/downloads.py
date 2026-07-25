@@ -115,6 +115,17 @@ def handle_completed_download(root: Path, download: dict[str, Any]) -> dict[str,
         return {"status": "IGNORED", "reason": "not listed by the main JSON"}
 
 
+def default_downloads_dir() -> Path:
+    """Where Chrome writes downloads before they are ingested.
+
+    Shared by every entry point that finishes a call, so the side panel and the
+    CLI agree. GPTWEBCALL_DOWNLOADS_DIR overrides it, which is also what lets a
+    test point the ingest at a temporary folder instead of the real one.
+    """
+    chosen = os.environ.get("GPTWEBCALL_DOWNLOADS_DIR")
+    return Path(chosen) if chosen else Path.home() / "Downloads"
+
+
 def ingest_from_downloads(
     root: Path, exchange_id: str, downloads_dir: Path
 ) -> dict[str, Any]:

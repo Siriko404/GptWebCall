@@ -16,7 +16,7 @@ from companion.core import (
     prepare_call,
     stop_call,
 )
-from companion.downloads import finalize_exchange, finish_call
+from companion.downloads import default_downloads_dir, finalize_exchange, finish_call
 from companion.repair import collect_defects, open_repair_round
 
 
@@ -118,12 +118,10 @@ def _parser() -> argparse.ArgumentParser:
 def _downloads_dir(explicit: str | None) -> Path:
     """Where Chrome writes downloads before they are ingested.
 
-    Resolution order: the explicit flag, then GPTWEBCALL_DOWNLOADS_DIR, then the
-    user's ~/Downloads. The companion pulls the expected files from here so a
-    failed extension move no longer leaves them stranded.
+    The explicit flag wins; otherwise this is the same resolution the side panel
+    uses, so both entry points ingest from the same place.
     """
-    chosen = explicit or os.environ.get("GPTWEBCALL_DOWNLOADS_DIR")
-    return Path(chosen) if chosen else Path.home() / "Downloads"
+    return Path(explicit) if explicit else default_downloads_dir()
 
 
 def main(argv: list[str] | None = None) -> int:

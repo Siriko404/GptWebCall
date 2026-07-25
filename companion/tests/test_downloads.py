@@ -393,6 +393,35 @@ class DownloadTests(unittest.TestCase):
         self.assertEqual(report["status"], "COMPLETE")
         self.assertTrue((self.exchange / "response" / "result.json").is_file())
 
+    def test_side_panel_done_ingests_from_downloads(self):
+        """The side panel's Done must ingest too, not just the CLI.
+
+        This is the regression. The capture fix was wired into cli.py, but the
+        Done button goes extension -> service worker -> native_host, which called
+        finish_call without a downloads dir. The ingest is guarded on that
+        argument, so it silently did nothing on the one path the operator
+        actually uses, while the CLI path looked fixed.
+        """
+        import os
+        from companion.native_host import dispatch
+
+        self.download("result.json", self.main_json_bytes(artifacts=False))
+        previous = os.environ.get("GPTWEBCALL_DOWNLOADS_DIR")
+        os.environ["GPTWEBCALL_DOWNLOADS_DIR"] = str(self.downloads)
+        try:
+            report = dispatch(
+                self.root,
+                {"protocol_version": 1, "command": "call.done", "payload": {}},
+            )
+        finally:
+            if previous is None:
+                os.environ.pop("GPTWEBCALL_DOWNLOADS_DIR", None)
+            else:
+                os.environ["GPTWEBCALL_DOWNLOADS_DIR"] = previous
+
+        self.assertEqual(report["status"], "COMPLETE")
+        self.assertTrue((self.exchange / "response" / "result.json").is_file())
+
     # ---- tolerate a junk model manifest on byte-perfect files ----
 
     def test_junk_manifest_on_sound_files_is_complete_but_unverified(self):

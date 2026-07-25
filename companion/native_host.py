@@ -18,7 +18,11 @@ from companion.core import (
     start_call,
     stop_call,
 )
-from companion.downloads import finish_call, handle_completed_download
+from companion.downloads import (
+    default_downloads_dir,
+    finish_call,
+    handle_completed_download,
+)
 from companion.repair import open_repair_round
 
 
@@ -151,7 +155,10 @@ def dispatch(root: Path, message: dict[str, Any]) -> dict[str, Any] | list[Any] 
             record.get("exchange_id") == exchange_id or exchange_id is None
             for record in load_active_calls(root)
         ):
-            return finish_call(root, exchange_id)
+            # The side panel's Done arrives here, not through the CLI, so it has
+            # to ingest from the downloads folder too. Without this the capture
+            # fix would only ever run for someone typing the command by hand.
+            return finish_call(root, exchange_id, default_downloads_dir())
         last_result = root / "state" / "LAST_RESULT.json"
         if not last_result.is_file():
             raise RuntimeError("no call is active and no prior result exists")
