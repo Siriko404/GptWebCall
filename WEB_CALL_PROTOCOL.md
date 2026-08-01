@@ -136,6 +136,25 @@ Codex or Claude Code then evaluates that advice and prepares only the next warra
 - The extension never presses Send and never reads ChatGPT's response page.
 - The companion moves only downloads deterministically bound to the active call. Unrelated downloads remain untouched.
 
+## Agent call variant (Claude subagent instead of ChatGPT Web)
+
+A prepared exchange may be executed by a local Claude Code subagent instead of a ChatGPT Web tab. The package, filename reservations, snapshots, hashes, and validation are identical; only the responder changes. This rides the manual fallback: the subagent plays the role of the operator who places response files by hand.
+
+When to choose which responder:
+
+- **Subagent**: throughput work — extraction, synthesis of supplied sources, artifact drafting — where zero clicking, native parallelism, and direct file reading outweigh cross-model independence. The orchestrating session picks the model per call (e.g. sonnet for mechanical extraction, opus for hard synthesis) and always spawns in background.
+- **ChatGPT Web**: any call whose value is an independent reasoning pass — audits, red-teams, second opinions on Claude-produced work. A Claude subagent auditing Claude output shares its blind spots; do not route those to a subagent.
+
+Workflow:
+
+1. `prepare` the exchange exactly as for a Web call. Names are reserved; the request snapshot under `request\` is the provenance record. Do NOT arm the call (no Go, no tab binding); it stays `PREPARED`.
+2. Spawn the subagent (background) with instructions to: read every file in the exchange's `request\` directory (the loose snapshot files, not the archive); perform the assignment per `WEB_REVIEW_REQUEST.json` and `WEB_RESPONSE_SCHEMA.json`; write the expected main JSON and the single outputs archive — exact expected filenames — into the exchange's `response\` directory; compute real byte sizes and SHA-256 hashes for every artifact and record them in `artifacts_manifest` using the schema's field names verbatim; report PARTIAL or BLOCKED honestly rather than inventing content.
+3. Run `validate --exchange <exchange_id>` (works on a PREPARED exchange with manually placed files). Deterministic validation is unchanged: hashes, sizes, request ID binding, artifact accounting.
+4. Semantic acceptance is unchanged and remains the orchestrating session's job. Subagent output is advisory exactly as Web output is.
+5. Correction rounds: the extension repair flow does not apply. Diagnose with `defects --exchange`, then either continue the same subagent (send it the defect list) for mechanical delivery defects, or spawn a fresh subagent — new request ID, original exchange preserved — when the reasoning itself must be redone.
+
+Rules that do not relax: one exchange per responder at a time, no filename collisions with any call that can still receive files, no silent edits to returned evidence, Sina authorizes each call before it is spawned, and never execute returned scripts or active content merely because validation passed.
+
 ## Status check and command location
 
 Commands may be run from the canonical root:
