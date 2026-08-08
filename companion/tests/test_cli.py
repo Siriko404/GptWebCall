@@ -135,6 +135,71 @@ class CLITests(unittest.TestCase):
         self.assertEqual((code, error), (0, ""))
         self.assertEqual(json.loads(output)["result"]["state"], "STOPPED")
 
+    def test_delete_removes_a_prepared_call_and_frees_its_filenames(self):
+        code, output, error = self.invoke("prepare", "--spec", str(self.spec_path))
+        self.assertEqual((code, error), (0, ""))
+        exchange_id = json.loads(output)["result"]["exchange_id"]
+
+        # The name is spoken for, so an identical second call cannot be prepared.
+        second_spec = json.loads(self.spec_path.read_text(encoding="utf-8"))
+        second_spec["subject"] = "Second CLI fixture"
+        second_spec["created_at"] = "2026-07-14T15:45:01-04:00"
+        self.spec_path.write_text(json.dumps(second_spec) + "\n", encoding="utf-8")
+        code, _, error = self.invoke("prepare", "--spec", str(self.spec_path))
+        self.assertNotEqual(code, 0)
+        self.assertIn("already claimed", json.loads(error)["error"])
+
+        code, output, error = self.invoke("delete", "--exchange", exchange_id)
+
+        self.assertEqual((code, error), (0, ""))
+        deleted = json.loads(output)["result"]
+        self.assertTrue(deleted["deleted"])
+        self.assertEqual(deleted["state_before_delete"], "PREPARED")
+        self.assertEqual(deleted["freed_deliverable_names"], ["cli_result.json"])
+        self.assertFalse((self.root / "calls" / exchange_id).exists())
+
+        # Freeing the name is the point: the same deliverable can now be claimed.
+        code, _, error = self.invoke("prepare", "--spec", str(self.spec_path))
+        self.assertEqual((code, error), (0, ""))
+
+    def test_delete_refuses_a_running_call(self):
+        code, output, error = self.invoke("prepare", "--spec", str(self.spec_path))
+        self.assertEqual((code, error), (0, ""))
+        exchange_id = json.loads(output)["result"]["exchange_id"]
+        start_call(self.root, exchange_id, 0, [])
+
+        code, output, error = self.invoke("delete", "--exchange", exchange_id)
+
+        self.assertNotEqual(code, 0)
+        self.assertIn("is running", json.loads(error)["error"])
+        self.assertTrue((self.root / "calls" / exchange_id).is_dir())
+
+    def test_delete_refuses_to_discard_a_received_response_unless_forced(self):
+        code, output, error = self.invoke("prepare", "--spec", str(self.spec_path))
+        self.assertEqual((code, error), (0, ""))
+        exchange_id = json.loads(output)["result"]["exchange_id"]
+        response = self.root / "calls" / exchange_id / "response" / "cli_result.json"
+        response.write_text('{"request_id":"request_cli"}\n', encoding="utf-8")
+
+        code, output, error = self.invoke("delete", "--exchange", exchange_id)
+        self.assertNotEqual(code, 0)
+        self.assertIn("cli_result.json", json.loads(error)["error"])
+        self.assertTrue(response.is_file())
+
+        code, output, error = self.invoke("delete", "--exchange", exchange_id, "--force")
+        self.assertEqual((code, error), (0, ""))
+        self.assertEqual(
+            json.loads(output)["result"]["discarded_responses"], ["cli_result.json"]
+        )
+        self.assertFalse((self.root / "calls" / exchange_id).exists())
+
+    def test_delete_rejects_path_traversal(self):
+        code, output, error = self.invoke("delete", "--exchange", "../escape")
+
+        self.assertNotEqual(code, 0)
+        self.assertEqual(output, "")
+        self.assertIn("unsafe", json.loads(error)["error"])
+
     @unittest.skipUnless(os.name == "nt", "Windows command wrapper test")
     def test_windows_wrapper_forwards_subcommand_after_root_path(self):
         repository_root = Path(__file__).resolve().parents[2]

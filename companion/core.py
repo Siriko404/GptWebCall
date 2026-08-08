@@ -462,6 +462,61 @@ def stop_call(root: Path, exchange_id: str | None = None) -> dict[str, Any]:
     return manifest
 
 
+def delete_call(root: Path, exchange_id: str, force: bool = False) -> dict[str, Any]:
+    """Remove an exchange from disk, freeing the deliverable names it claimed.
+
+    A superseded call is not harmless. It stays PREPARED forever, so it keeps
+    claiming its expected filenames and the next call that wants them is refused,
+    and it sits in the panel inviting someone to send the wrong payload. Stopping
+    is the wrong instrument: STOPPED still leaves the directory and its request
+    bundle behind.
+
+    Deleting is refused while the call is running, because the download monitor
+    would keep writing into a directory that no longer exists. It is also refused
+    once a response has landed, since that file is the only copy of work the model
+    already did; force overrides that and only that.
+    """
+    root = Path(root).resolve()
+    with state_lock(root):
+        exchange_dir = _exchange_dir(root, exchange_id)
+        manifest = _read_json_object(
+            exchange_dir / "EXCHANGE_MANIFEST.json", "EXCHANGE_MANIFEST"
+        )
+        if any(record.get("exchange_id") == exchange_id for record in load_active_calls(root)):
+            raise RuntimeError(
+                f"call {exchange_id} is running. Stop it first, then delete it."
+            )
+        received = sorted(
+            path.name
+            for path in (exchange_dir / "response").glob("*")
+            if path.is_file()
+        )
+        if received and not force:
+            raise RuntimeError(
+                f"call {exchange_id} has already received {', '.join(received)}. "
+                "Deleting discards the only copy of that response. Move the files "
+                "elsewhere first, or pass --force to discard them."
+            )
+        freed = [
+            name
+            for name in [
+                str(manifest.get("expected_main_json", "")),
+                *[str(item) for item in manifest.get("expected_artifacts", [])],
+            ]
+            if name
+        ]
+        shutil.rmtree(exchange_dir)
+        _active_path_for(root, exchange_id).unlink(missing_ok=True)
+    return {
+        "exchange_id": exchange_id,
+        "subject": manifest.get("subject"),
+        "state_before_delete": manifest.get("state"),
+        "deleted": True,
+        "discarded_responses": received,
+        "freed_deliverable_names": freed,
+    }
+
+
 def _assert_can_run_alongside(
     root: Path, exchange_id: str, tab_id: int, manifest: dict[str, Any]
 ) -> None:

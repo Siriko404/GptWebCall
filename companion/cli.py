@@ -11,6 +11,7 @@ from typing import TextIO
 from companion.core import (
     _exchange_dir,
     _read_json_object,
+    delete_call,
     list_ready_calls,
     load_active_calls,
     prepare_call,
@@ -56,6 +57,8 @@ def run(
             )
         elif command == "stop":
             result = stop_call(root, options.exchange)
+        elif command == "delete":
+            result = delete_call(root, options.exchange, options.force)
         elif command == "validate":
             result = finalize_exchange(
                 root, options.exchange, _downloads_dir(options.downloads_dir)
@@ -104,6 +107,9 @@ def _parser() -> argparse.ArgumentParser:
     done.add_argument("--downloads-dir", default=None)
     stop = subcommands.add_parser("stop", exit_on_error=False)
     stop.add_argument("--exchange", default=None)
+    delete = subcommands.add_parser("delete", exit_on_error=False)
+    delete.add_argument("--exchange", required=True)
+    delete.add_argument("--force", action="store_true")
     validate = subcommands.add_parser("validate", exit_on_error=False)
     validate.add_argument("--exchange", required=True)
     validate.add_argument("--downloads-dir", default=None)
