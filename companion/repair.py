@@ -29,6 +29,7 @@ from companion.core import (
     load_active_call,
     load_active_calls,
 )
+from companion.downloads import archive_member_index
 from companion.lock import state_lock
 
 REPAIRABLE_STATES = {"ACTIVE", "INCOMPLETE", "COMPLETE"}
@@ -99,24 +100,9 @@ def collect_defects(exchange_dir: Path) -> list[dict[str, Any]]:
                 f"status {json.dumps(status)}",
             )
         )
-    elif status != "COMPLETE":
-        limitations = raw.get("limitations")
-        detail = (
-            "; ".join(str(item) for item in limitations)
-            if isinstance(limitations, list) and limitations
-            else "no limitations were given"
-        )
-        defects.append(
-            _defect(
-                "STATUS_NOT_COMPLETE",
-                expected_main,
-                "status COMPLETE with all requested work delivered",
-                f"status {status}: {detail}",
-            )
-        )
 
     defects.extend(_artifact_defects(raw, response_dir, expected_main))
-    defects.extend(_delivery_defects(raw, expected_main))
+    defects.extend(_delivery_defects(raw, expected_main, response_dir))
     defects.extend(_undeclared_expected_defects(raw, manifest, response_dir))
     return defects
 
@@ -160,7 +146,10 @@ def build_repair_prompt(
             f'- Keep request_id exactly "{request_id}".',
             "- artifacts_manifest must list every created file once, with filename,",
             "  status CREATED, media_type, exact size in bytes, and exact sha256.",
-            f"- delivery must list {expected_main} and every created artifact.",
+            "  A file inside the outputs archive belongs in this list too, with its",
+            "  own hash.",
+            f"- delivery must list only what is downloadable: {expected_main} and the",
+            "  outputs archive. Do not repeat the archive's members there.",
             "- If a file genuinely cannot be produced, set its status to NOT_CREATED,",
             "  leave it out of delivery, set the top-level status to PARTIAL, and give",
             "  the reason in limitations.",
@@ -288,6 +277,7 @@ def _artifact_defects(
         ]
 
     defects: list[dict[str, Any]] = []
+    members: dict[str, tuple[str, int]] | None = None
     for position, artifact in enumerate(artifacts, 1):
         label = f"artifacts_manifest[{position}]"
         if not isinstance(artifact, dict):
@@ -377,18 +367,30 @@ def _artifact_defects(
             )
             declared_digest = None
 
+        # A declared artifact is either a file beside the main JSON or a member of
+        # the archive that came down with it. Looking only on disk made every
+        # declared member of a byte-exact archive an ARTIFACT_MISSING defect, and
+        # told the operator to spend a correction round repairing nothing.
         path = response_dir / name
-        if not path.is_file():
+        if path.is_file():
+            resolved = _sha256(path)
+        else:
+            if members is None:
+                members = archive_member_index(response_dir)
+            resolved = members.get(name.casefold())
+        if resolved is None:
             defects.append(
                 _defect(
                     "ARTIFACT_MISSING",
                     name,
-                    "the file to be delivered as a download",
-                    "it was declared CREATED but never arrived",
+                    "the file to be delivered, beside the main JSON or inside the "
+                    "outputs archive",
+                    "it was declared CREATED but is neither a delivered file nor a "
+                    "member of a delivered archive",
                 )
             )
             continue
-        actual_digest, actual_size = _sha256(path)
+        actual_digest, actual_size = resolved
         if declared_size is not None and declared_size != actual_size:
             defects.append(
                 _defect(
@@ -440,7 +442,7 @@ def _undeclared_expected_defects(
 
 
 def _delivery_defects(
-    raw: dict[str, Any], expected_main: str
+    raw: dict[str, Any], expected_main: str, response_dir: Path
 ) -> list[dict[str, Any]]:
     delivery = raw.get("delivery")
     if not isinstance(delivery, list) or any(
@@ -455,6 +457,10 @@ def _delivery_defects(
             )
         ]
 
+    # `delivery` names what came down as downloads. A created artifact that lives
+    # inside the outputs archive was never separately downloadable, so requiring
+    # it here reported a correct two-file delivery as incomplete. Only artifacts
+    # that arrived as their own file belong in the requirement.
     delivered = {item.casefold() for item in delivery}
     required = {expected_main.casefold()}
     artifacts = raw.get("artifacts_manifest")
@@ -464,6 +470,7 @@ def _delivery_defects(
                 isinstance(artifact, dict)
                 and artifact.get("status") == "CREATED"
                 and isinstance(artifact.get("filename"), str)
+                and (response_dir / artifact["filename"]).is_file()
             ):
                 required.add(artifact["filename"].casefold())
     absent = sorted(required - delivered)

@@ -118,6 +118,21 @@ The same principle governs the expected-artifact backstop. An artifact the call 
 
 **When you write a prompt, keep asking for `PARTIAL`.** It no longer costs anything.
 
+## Declared artifacts may live inside the archive
+
+An artifact the responder declares is either a file that came down beside the main JSON or a member of the outputs archive that did. Both carry a declared size and SHA-256, both are verified against it, and only the lookup differs.
+
+This matters because the two rules above pull in opposite directions if read carelessly. "Every returned file goes inside one archive" and "every additional file is listed once in `artifacts_manifest`" together mean the manifest routinely enumerates files that are not in `response\` at all. Treating those as undelivered downloads reported one real forty-three-file archive as forty-four defects, and dropped a byte-exact delivery into the unverified fallback, so the per-member hashes the responder had supplied were never spent.
+
+Keep the two lists distinct:
+
+| List | Contains |
+|---|---|
+| `artifacts_manifest` | every created file, including archive members, each with its own hash |
+| `delivery` | only what was downloadable: the main JSON and the outputs archive |
+
+Filename routing reads neither of these for the archive's members; only the two downloadable names are ever matched against a download.
+
 ## Filenames are the routing key
 
 **This is the one rule that makes the whole system work. Read it before writing any preparation spec.**
@@ -378,11 +393,11 @@ Rules:
 
 - `request_id` must equal the exchange request ID.
 - `status` is `COMPLETE`, `PARTIAL`, or `BLOCKED`.
-- Every additional file is listed once in `artifacts_manifest`.
+- Every additional file is listed once in `artifacts_manifest`, whether it came down as its own download or travels inside the outputs archive. Listing the archive's members is encouraged: a member's declared SHA-256 is the only way a truncated or corrupted file inside the archive can be detected.
 - Artifact status is `CREATED`, `MISSING`, or `NOT_CREATED`.
 - Every `CREATED` artifact supplies exact filename, media type, byte size, and SHA-256.
-- `delivery` accounts for the expected main JSON and every created artifact.
-- A `PARTIAL` or `BLOCKED` response is preserved but deterministic validation reports the exchange incomplete.
+- `delivery` names only what came down as downloads: the expected main JSON and the outputs archive. It does not repeat the archive's members, which were never separately downloadable.
+- A `PARTIAL` or `BLOCKED` response delivered intact is `status: COMPLETE` with `response_status` recording what the responder said. See "Delivery integrity is not work completeness".
 - ChatGPT should emit no conversational acknowledgment, summary, markdown block, or pasted JSON outside the downloadable files.
 
 ## Semantic acceptance
@@ -443,7 +458,7 @@ Rules:
 - `done`: stop and deterministically validate one active call without the extension.
 - `stop`: abandon one active call and record `STOPPED` without deleting evidence.
 - `delete`: remove one exchange from disk entirely and free the deliverable names it claimed.
-- `validate`: validate files manually placed into a non-active prepared or incomplete exchange.
+- `validate`: validate response files placed by hand into a non-active exchange. This is a manual-fallback step, not a pre-send check; it refuses a prepared call that nothing has answered. To inspect a call before sending it, use `show`.
 - `defects`: report every validation defect in a delivered response without changing anything.
 - `repair`: open a correction round, write its prompt and defect record, and re-arm monitoring.
 

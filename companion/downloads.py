@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
@@ -257,6 +258,38 @@ def _safe_copy(source: Path, destination: Path) -> str:
     return "COPIED"
 
 
+def archive_member_index(response_dir: Path) -> dict[str, tuple[str, int]]:
+    """Every member of every delivered archive, by filename, with digest and size.
+
+    Under "two files up, two files down" a returned file other than the main JSON
+    lives inside the outputs archive, and responders declare those members in
+    `artifacts_manifest` with a SHA-256 each. A member is not a file in
+    `response\\`, so looking only on disk reported every declared member missing.
+
+    Members are indexed by base name because the manifest names plain files. The
+    first archive to claim a name keeps it; a name in two archives is ambiguous
+    and the delivery contract already forbids more than one archive.
+    """
+    index: dict[str, tuple[str, int]] = {}
+    for archive_path in sorted(Path(response_dir).glob("*.zip")):
+        try:
+            with zipfile.ZipFile(archive_path) as archive:
+                for entry in archive.infolist():
+                    if entry.is_dir():
+                        continue
+                    digest = hashlib.sha256()
+                    with archive.open(entry) as member:
+                        while chunk := member.read(1024 * 1024):
+                            digest.update(chunk)
+                    index.setdefault(
+                        Path(entry.filename).name.casefold(),
+                        (digest.hexdigest(), entry.file_size),
+                    )
+        except (OSError, zipfile.BadZipFile):
+            continue
+    return index
+
+
 def _structurally_sound(path: Path) -> bool:
     """A cheap integrity check for a delivered artifact when its declared hash is
     unusable: an archive must open and pass its own CRCs, JSON must parse, and any
@@ -431,15 +464,28 @@ def validate_response(exchange_dir: Path) -> dict[str, Any]:
     # system punished exactly the behaviour it requested.
     response_status = str(main["status"])
 
+    # A declared artifact is either a file that came down beside the main JSON or
+    # a member of the archive that did. Both carry a declared hash and both are
+    # verified against it; only the lookup differs. Treating a member as an
+    # undelivered download reported a byte-exact archive as dozens of missing
+    # files, and dropped the response into the unverified fallback, so the
+    # per-member hashes the responder supplied were never spent.
+    members: dict[str, tuple[str, int]] | None = None
     for artifact in main["artifacts_manifest"]:
         if artifact["status"] != "CREATED":
             continue
         name = artifact["filename"]
         path = exchange / "response" / name
-        if not path.is_file():
+        if path.is_file():
+            found = _sha256(path)
+        else:
+            if members is None:
+                members = archive_member_index(exchange / "response")
+            found = members.get(name.casefold())
+        if found is None:
             missing.append(name)
             continue
-        digest, size = _sha256(path)
+        digest, size = found
         if digest != artifact["sha256"] or size != artifact["size"]:
             invalid.append(name)
             continue
@@ -594,7 +640,6 @@ def _parse_main_response(
         raise ValueError("main response delivery contains duplicate filenames")
 
     seen: set[str] = set()
-    created_names: list[str] = []
     for artifact in artifacts:
         if not isinstance(artifact, dict):
             raise ValueError("artifact manifest entries must be objects")
@@ -620,12 +665,17 @@ def _parse_main_response(
             if not isinstance(media_type, str) or not media_type:
                 raise ValueError(f"artifact media_type is invalid: {name}")
             artifact["sha256"] = digest.casefold()
-            created_names.append(name)
 
-    delivered = {item.casefold() for item in delivery}
-    required_delivery = {expected_main.casefold(), *(name.casefold() for name in created_names)}
-    if not required_delivery.issubset(delivered):
-        raise ValueError("main response delivery does not account for all created files")
+    # `delivery` names what came down as downloads: the main JSON and the outputs
+    # archive. It cannot also be required to name every created artifact, because
+    # a created artifact may be a member of that archive and was never separately
+    # downloadable. This function is the gate that decides whether the file may be
+    # moved at all, and it runs while downloads are still arriving, so it checks
+    # only the identity of the delivery. Whether every created file was accounted
+    # for is decided by `collect_defects`, once everything has landed and archive
+    # members can be resolved.
+    if expected_main.casefold() not in {item.casefold() for item in delivery}:
+        raise ValueError("main response delivery does not name the main JSON")
     return main
 
 

@@ -130,7 +130,18 @@ class RepairTests(unittest.TestCase):
         self.assertIn(wrong_digest, mismatch["expected"])
         self.assertIn(self.report_digest, mismatch["observed"])
 
-    def test_partial_status_is_reported_with_its_limitations(self):
+    def test_an_intact_partial_delivery_has_no_defects_to_repair(self):
+        """A repair round fixes a broken delivery, not an honest answer.
+
+        This test previously asserted the opposite, and that assertion was the
+        bug: PARTIAL is the responder's account of its own work, which these
+        prompts explicitly ask for, and validate_response already stopped
+        treating it as a delivery fault. collect_defects still did, so the two
+        commands gave opposite verdicts on the same bytes and the operator was
+        told to spend a correction round on a flawless delivery. Where the work
+        itself is inadequate the remedy is a new correction call with a new
+        request ID, not a repair round.
+        """
         main = self.download(
             "result.json",
             self.main_json_bytes(
@@ -138,12 +149,11 @@ class RepairTests(unittest.TestCase):
             ),
         )
         handle_completed_download(self.root, self.completed(3, main))
-        finish_call(self.root)
+        report = finish_call(self.root)
 
-        defects = collect_defects(self.exchange)
-
-        self.assertEqual([defect["kind"] for defect in defects], ["STATUS_NOT_COMPLETE"])
-        self.assertIn("ran out of context", defects[0]["observed"])
+        self.assertEqual(report["status"], "COMPLETE")
+        self.assertEqual(report["response_status"], "PARTIAL")
+        self.assertEqual(collect_defects(self.exchange), [])
 
     def test_delivery_omission_is_reported(self):
         # The strict move gate refuses this main JSON, so it only reaches the
