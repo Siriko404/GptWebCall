@@ -14,3 +14,5 @@ __pycache__/
 .vscode/
 Thumbs.db
 .DS_Store
+/nativehost.exe
+.pytest_cache/
