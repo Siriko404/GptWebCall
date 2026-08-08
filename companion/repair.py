@@ -21,6 +21,7 @@ from typing import Any
 
 from companion.core import (
     _active_path_for,
+    claimed_deliverable_names,
     _exchange_dir,
     _read_json_object,
     _safe_name,
@@ -184,6 +185,25 @@ def open_repair_round(
                 raise RuntimeError(
                     f"tab {tab_id} is already bound to call {other['exchange_id']}"
                 )
+
+    # Reopening a finished exchange re-claims its deliverable names, and a
+    # finished exchange has already released them. If another call took them in
+    # the meantime, two calls able to receive files would expect the same
+    # filename, which is the one thing download routing cannot survive. Checked
+    # before anything is written, so a refusal leaves no orphan round behind.
+    claimed = claimed_deliverable_names(root, exclude_exchange_id=exchange_id)
+    for name in [
+        str(manifest["expected_main_json"]),
+        *[str(item) for item in manifest.get("expected_artifacts", [])],
+    ]:
+        owner = claimed.get(name.casefold())
+        if owner:
+            raise RuntimeError(
+                f"call {owner} now expects the filename {name}, which this "
+                "exchange released when it finished. Reopening it would leave two "
+                "calls expecting the same download. Finish or delete that call "
+                "first, or raise a new correction call with its own filenames."
+            )
 
     defects = collect_defects(exchange)
     if not defects:

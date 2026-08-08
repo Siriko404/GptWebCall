@@ -129,6 +129,30 @@ if ($registered -ne $manifestPath) {
 Write-Output "  Host manifest: $manifestPath"
 Write-Output "  Pinned origin: $expectedOrigin"
 Write-Output "  Registered:    $registryPath"
+
+# The companion collects finished downloads from one directory. It defaults to
+# the user profile's Downloads folder, but Chrome lets the user choose another,
+# and when the two disagree a call validates as if nothing was ever returned.
+# Chrome records the choice in its own preferences, so the mismatch can be
+# reported here instead of being discovered at the end of a real call.
+$expectedDownloads = Join-Path $env:USERPROFILE 'Downloads'
+$preferences = Join-Path $env:LOCALAPPDATA 'Google\Chrome\User Data\Default\Preferences'
+if (Test-Path -LiteralPath $preferences -PathType Leaf) {
+    try {
+        $chosen = (Get-Content -LiteralPath $preferences -Raw -Encoding UTF8 |
+            ConvertFrom-Json).download.default_directory
+    } catch {
+        $chosen = $null
+    }
+    if ($chosen -and $chosen.TrimEnd('\') -ne $expectedDownloads.TrimEnd('\')) {
+        Write-Warning "Chrome saves downloads to $chosen, but the companion reads $expectedDownloads."
+        Write-Output  "  Set GPTWEBCALL_DOWNLOADS_DIR to Chrome's directory, for this account:"
+        Write-Output  "    [Environment]::SetEnvironmentVariable('GPTWEBCALL_DOWNLOADS_DIR', '$chosen', 'User')"
+        Write-Output  "  Then restart Chrome so the companion inherits it."
+    } else {
+        Write-Output "  Downloads:     $expectedDownloads"
+    }
+}
 Write-Output ''
 Write-Output 'Installed. Reload the extension in chrome://extensions, then open its side panel:'
 Write-Output '  a green dot and the repository name mean the companion answered.'

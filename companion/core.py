@@ -141,7 +141,19 @@ def prepare_call(root: Path, spec: dict[str, Any], now: datetime) -> dict[str, A
             "response_dir": "response",
         }
         _write_json_atomic(staging / "EXCHANGE_MANIFEST.json", manifest)
-        os.replace(staging, destination)
+        # The check above runs before staging so an author learns about a taken
+        # name immediately. This one is the guarantee. Copying and hashing every
+        # input sits between them and is unbounded, so a second preparation can
+        # start in that window, see the same names free, and publish first. The
+        # re-check and the publication happen together under the lock, which is
+        # what makes claiming a deliverable name a single step.
+        with state_lock(root):
+            _assert_deliverable_names_are_free(
+                root, exchange_id, [expected_main, *expected_artifacts]
+            )
+            if destination.exists():
+                raise FileExistsError(f"exchange already exists: {exchange_id}")
+            os.replace(staging, destination)
         return manifest
     except BaseException:
         shutil.rmtree(staging, ignore_errors=True)
