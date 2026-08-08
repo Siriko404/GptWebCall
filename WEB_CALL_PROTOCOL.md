@@ -9,16 +9,68 @@ This file is the complete operating contract for any Codex or Claude Code sessio
 After reading this file, a new session must:
 
 1. Treat the canonical root above as the system root and the filesystem there as operational authority.
-2. Run `active` and `list` before preparing anything, so it does not collide with an existing call.
-3. Read "Filenames are the routing key" before writing any preparation spec.
-4. Classify the requested work before substantive reasoning.
-5. Prepare a Web call only when the work is reasoning-heavy or Sina explicitly requests one.
-6. Select only the context needed for that bounded call; never upload a repository or directory implicitly.
-7. Explain to Sina what the prepared call will do, then let Sina control Attach, Send, downloads, and Done.
-8. Treat the returned work as advisory even after deterministic file validation passes.
-9. Preserve each exchange and record accepted conclusions in the external project's own ledger or artifacts.
+2. Read "RULE #1 OF PROMPT ENGINEERING: never bias the call" before writing any prompt, request or response schema.
+3. Run `active` and `list` before preparing anything, so it does not collide with an existing call.
+4. Read "Filenames are the routing key" before writing any preparation spec.
+5. Classify the requested work before substantive reasoning.
+6. Prepare a Web call only when the work is reasoning-heavy or Sina explicitly requests one.
+7. Select only the context needed for that bounded call; never upload a repository or directory implicitly.
+8. Explain to Sina what the prepared call will do, then let Sina control Attach, Send, downloads, and Done.
+9. Treat the returned work as advisory even after deterministic file validation passes.
+10. Preserve each exchange and record accepted conclusions in the external project's own ledger or artifacts.
 
 Several calls may be active at once, each bound to its own ChatGPT tab. A single-call workflow remains the common case, and every command that acts on one active call still works without naming it when exactly one active call exists. The system is intentionally filesystem-only; `calls\`, `state\`, request snapshots, response files, manifests, and validation reports preserve continuity across sessions and compaction.
+
+## RULE #1 OF PROMPT ENGINEERING: never bias the call
+
+**This is the first rule, above every other consideration in this document, and it applies to every prompt written anywhere, not only to Web calls.**
+
+> Your job is to define the **persona** and the **instructions** of an agent that has exactly the expertise you need and knows how to navigate the task professionally and in depth.
+> Your job is **not** to smuggle your own answer into the prompt and get it echoed back.
+
+You are commissioning an expert precisely because you expect a better answer than your own. Every candidate solution you put in the prompt destroys that. The model will anchor on it, elaborate it, and return it wearing your words — and you will read your own reasoning back and mistake the agreement for confirmation. A call that mirrors you cost a full budget and taught you nothing.
+
+**Contamination is irreversible inside a call.** A model cannot un-see a suggestion. There is no recovering the independent answer once the prompt contains yours.
+
+### The dividing line
+
+| Belongs in the prompt | Never belongs in the prompt |
+|---|---|
+| **Measured facts** — sizes, counts, hashes, addresses you verified | **Your conclusions drawn from those facts** |
+| **Verbatim quotes** of what the owner actually said | Your paraphrase of what they "really meant" |
+| **Environment constraints** — no MSVC toolchain, stateless calls, filename routing | The workaround you invented for that constraint |
+| **The outcome required** and how it will be judged | The structure, architecture, or method you think produces it |
+| **Evidence standard** — what counts as proof | Which specific things you expect to be proven |
+| **Failure history**, with evidence of each failure | Your theory of the root cause |
+| **The persona** — the expertise the task demands | A worked example that becomes the template |
+
+### Bias vectors that hide in plain sight
+
+These are the ones that slip past, because they look like helpfulness or rigour:
+
+1. **Candidate lists.** "Suggested roles: A, B, C, D, E — adopt, reject or replace." The escape hatch is decoration. You will get A–E back, lightly reworded.
+2. **Enum fields in the response schema.** `"mechanism": {"enum": ["deliberate-overlap", "interface-contract", "seam-owner-rule"]}` pre-enumerates the entire solution space. A better fourth answer becomes literally inexpressible.
+3. **Solution-shaped schema fields.** If your required fields are named after your design, the schema *is* your design and no other answer can validate.
+4. **Deliverable filenames encoding structure.** Demanding `R2_ROLE<N>_*.md` presupposes round 2 is organised by roles.
+5. **Analytical asides.** "Weight is effort, not bytes — 22 MB of disassembly is mostly inert." That is the expert's job, done for them and no longer testable.
+6. **Named traps and warnings.** "The trap here is X." You just told them what to conclude.
+7. **Architecture diagrams of the thing being designed.** The most direct form of the disease.
+
+### The test to apply before sending
+
+Read your own prompt and schema and ask:
+
+> **Could an answer substantially better than mine — and structurally different from mine — be expressed in this format and validate against this schema?**
+
+If no, the call is biased. Rewrite it. Prefer schema fields that describe *outcomes and evidence* (`what was decided`, `why`, `what it is checked against`) over fields that describe *your mechanism*.
+
+### What a well-formed ask looks like
+
+Specify, in this order: **who the agent is**, **what must be true of the answer**, **what is forbidden**, **what evidence is required**, **the facts they need**. Then stop. Let the expertise navigate.
+
+Constraints imposed by the owner or by the environment are not bias — state them plainly and completely. The distinction is authorship: a requirement handed down from the owner, or a fact measured from the world, belongs in the prompt; a solution you thought of does not.
+
+---
 
 ## Two files up, two files down
 
@@ -78,6 +130,8 @@ That has one absolute consequence:
 > Not the same main JSON name. Not the same artifact name. Not a main JSON of one call matching an artifact of another. Comparison is case-insensitive.
 
 A call can still receive files while it is `PREPARED` or `ACTIVE`. Once it is `COMPLETE`, `INCOMPLETE`, or `STOPPED` it releases its names and they may be reused.
+
+A call that was prepared and then superseded therefore holds its names forever, because nothing moves a `PREPARED` call out of that state on its own and `stop` only works on an active one. Either give the corrected call distinct filenames, or `delete --exchange` the superseded one to release them.
 
 This is enforced, not merely requested. `prepare` refuses a spec whose `expected_main_json` or any `expected_artifacts` entry is already claimed, and names the call that holds it. `call.go` repeats the check against running calls as a backstop for hand-edited manifests. A name that slips through both and is claimed by two running calls produces `AMBIGUOUS`, and the file is left in the downloads folder untouched rather than delivered to the wrong exchange.
 
@@ -375,6 +429,8 @@ Rules:
 .\gptwebcall.cmd done --exchange <exchange_id>
 .\gptwebcall.cmd stop
 .\gptwebcall.cmd stop --exchange <exchange_id>
+.\gptwebcall.cmd delete --exchange <exchange_id>
+.\gptwebcall.cmd delete --exchange <exchange_id> --force
 .\gptwebcall.cmd validate --exchange <exchange_id>
 .\gptwebcall.cmd defects --exchange <exchange_id>
 .\gptwebcall.cmd repair --exchange <exchange_id> --tab <tab_id>
@@ -386,9 +442,38 @@ Rules:
 - `active`: show the active-call record, or the list of them when several are running, or `null`.
 - `done`: stop and deterministically validate one active call without the extension.
 - `stop`: abandon one active call and record `STOPPED` without deleting evidence.
+- `delete`: remove one exchange from disk entirely and free the deliverable names it claimed.
 - `validate`: validate files manually placed into a non-active prepared or incomplete exchange.
 - `defects`: report every validation defect in a delivered response without changing anything.
 - `repair`: open a correction round, write its prompt and defect record, and re-arm monitoring.
+
+### Deleting a superseded call
+
+`stop` is for a call that was started and must be abandoned. It requires an
+active call and leaves the directory in place. Neither fits a call that was
+prepared and then found wrong before it was ever sent — a payload missing a file
+that its own primary question depends on, a request that asks the wrong thing, a
+spec corrected after packaging. Such a call cannot be stopped, because it never
+became active.
+
+Left alone it is not inert. It stays `PREPARED` indefinitely, so it keeps
+claiming its `expected_main_json` and artifact names, and the corrected call that
+wants those names is refused (see **Filenames are the routing key**). It also
+stays in the panel, one click away from sending the payload you already know is
+wrong. `delete` removes the directory and releases the names.
+
+Two refusals guard it, and only the second can be overridden:
+
+- **A running call is never deleted.** The download monitor would keep writing
+  into a directory that no longer exists. Stop it first, then delete it.
+- **A received response is never discarded silently.** Once a file has landed in
+  `response\`, that file is the only copy of work the model already did. Move it
+  elsewhere, or pass `--force` to discard it deliberately. The result reports
+  what was discarded under `discarded_responses`.
+
+Prefer renaming deliverables over deleting when the superseded call still holds a
+response worth keeping: a call whose state is not `PREPARED` or `ACTIVE` has
+already released its names, so it blocks nothing.
 
 ## Restart and interruption recovery
 
