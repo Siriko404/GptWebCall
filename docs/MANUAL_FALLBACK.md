@@ -4,8 +4,8 @@ Use this when the extension is unavailable. `WEB_CALL_PROTOCOL.md` remains autho
 
 1. From the canonical root, run `.\gptwebcall.cmd active` and `.\gptwebcall.cmd list`.
 2. Select one exchange; inspect it with `.\gptwebcall.cmd show --exchange <exchange_id>`.
-3. Upload exactly its manifest-listed files from `request\`, including the generated timestamped prompt.
-4. Sina clicks ChatGPT's native Send and manually downloads the expected main JSON plus all created artifacts.
+3. Upload exactly the two files named in its `attach_files`: the generated prompt and the inputs archive, both from `request\`.
+4. The operator clicks ChatGPT's native Send and manually downloads the expected main JSON plus all created artifacts.
 5. Place only those returned files in that exchange's `response\` directory under their expected names. Never overwrite different existing bytes.
 6. If the exchange was never active, run `.\gptwebcall.cmd validate --exchange <exchange_id>`.
 7. If it is active, run `.\gptwebcall.cmd done`.

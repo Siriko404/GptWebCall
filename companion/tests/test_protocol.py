@@ -12,7 +12,7 @@ class ProtocolTests(unittest.TestCase):
         protocol = (self.root / "WEB_CALL_PROTOCOL.md").read_text(encoding="utf-8")
 
         for required in (
-            "C:\\GptWebCall",
+            "System root: the directory containing this file",
             "reasoning-heavy",
             "PROMPT_YYYY-MM-DD_HHMMSS.md",
             "## Two files up, two files down",
@@ -66,11 +66,36 @@ class ProtocolTests(unittest.TestCase):
             '"artifacts_manifest"',
             '"delivery"',
             "Resume attachment",
-            "Sina clicks",
+            "The operator clicks",
             "advisory",
             "new correction call",
         ):
             self.assertIn(contract_term, protocol)
+
+    def test_shipped_documents_name_no_machine_but_the_reader_s_own(self):
+        """The protocol is read by a session on a stranger's machine.
+
+        An absolute path from the author's disk, or the author's name, reads to
+        that session as the canonical location of a system that is in fact
+        wherever the reader put it. This is a regression guard, not a style rule.
+        """
+        for name in ("README.md", "WEB_CALL_PROTOCOL.md", "docs/MANUAL_FALLBACK.md"):
+            document = (self.root / name).read_text(encoding="utf-8")
+            self.assertNotRegex(document, r"[A-Za-z]:\\Users\\[^\\\s]+", name)
+            self.assertNotIn("Sina", document, name)
+
+    def test_manual_fallback_uploads_the_two_attach_files(self):
+        """Uploading every request file was the pre-bundle contract.
+
+        Preparation now packs everything except the prompt into one archive and
+        records the pair in attach_files. An instruction to upload all of
+        request_files would have the operator attach the loose provenance copies
+        alongside the archive that already contains them.
+        """
+        for name in ("WEB_CALL_PROTOCOL.md", "docs/MANUAL_FALLBACK.md"):
+            document = (self.root / name).read_text(encoding="utf-8")
+            self.assertIn("attach_files", document, name)
+            self.assertNotIn("files listed in `request_files`", document, name)
 
     def test_native_host_template_is_origin_pinned_and_scripts_are_safe(self):
         template = json.loads(

@@ -1,21 +1,21 @@
 # GPT Web Call Protocol
 
-Canonical root: `C:\GptWebCall`
+System root: the directory containing this file. Every path and command below is relative to it.
 
-This file is the complete operating contract for any Codex or Claude Code session using the installed GPT Web Call system. Read it before operating the system. Do not infer workflow rules from old design files under `docs/history/`.
+This file is the complete operating contract for any Codex or Claude Code session using the installed GPT Web Call system. Read it before operating the system.
 
 ## Fresh-session contract
 
 After reading this file, a new session must:
 
-1. Treat the canonical root above as the system root and the filesystem there as operational authority.
+1. Treat the directory containing this file as the system root and the filesystem there as operational authority.
 2. Read "RULE #1 OF PROMPT ENGINEERING: never bias the call" before writing any prompt, request or response schema.
 3. Run `active` and `list` before preparing anything, so it does not collide with an existing call.
 4. Read "Filenames are the routing key" before writing any preparation spec.
 5. Classify the requested work before substantive reasoning.
-6. Prepare a Web call only when the work is reasoning-heavy or Sina explicitly requests one.
+6. Prepare a Web call only when the work is reasoning-heavy or the operator explicitly requests one.
 7. Select only the context needed for that bounded call; never upload a repository or directory implicitly.
-8. Explain to Sina what the prepared call will do, then let Sina control Attach, Send, downloads, and Done.
+8. Explain to the operator what the prepared call will do, then let the operator control Attach, Send, downloads, and Done.
 9. Treat the returned work as advisory even after deterministic file validation passes.
 10. Preserve each exchange and record accepted conclusions in the external project's own ledger or artifacts.
 
@@ -133,7 +133,7 @@ A call can still receive files while it is `PREPARED` or `ACTIVE`. Once it is `C
 
 A call that was prepared and then superseded therefore holds its names forever, because nothing moves a `PREPARED` call out of that state on its own and `stop` only works on an active one. Either give the corrected call distinct filenames, or `delete --exchange` the superseded one to release them.
 
-This is enforced, not merely requested. `prepare` refuses a spec whose `expected_main_json` or any `expected_artifacts` entry is already claimed, and names the call that holds it. `call.go` repeats the check against running calls as a backstop for hand-edited manifests. A name that slips through both and is claimed by two running calls produces `AMBIGUOUS`, and the file is left in the downloads folder untouched rather than delivered to the wrong exchange.
+This is enforced, not merely requested. `prepare` refuses a spec whose `expected_main_json` or any `expected_artifacts` entry is already claimed, and names the call that holds it. `core.py` repeats the check against running calls as a backstop for hand-edited manifests. A name that slips through both and is claimed by two running calls produces `AMBIGUOUS`, and the file is left in the downloads folder untouched rather than delivered to the wrong exchange.
 
 **Declare the archive up front.** Add `expected_artifacts` to the preparation spec naming the single archive the call should return besides the main JSON:
 
@@ -160,7 +160,7 @@ Several calls may run at once, each bound to its own ChatGPT tab.
 - An artifact downloaded before any main JSON waits in a shared pending pool and is released to whichever call's main JSON later names it. Distinct filenames are what make that release unambiguous.
 - `done`, `stop`, and `repair` take `--exchange`. With exactly one active call the flag may be omitted; with several, omitting it is an error rather than a guess.
 - Each armed tab shows Chrome's "being debugged" banner until its files are attached.
-- Sina still drives every call by hand: Go, Attach, Send, download, Done, once per call. Parallel removes the waiting, not the clicking.
+- The operator still drives every call by hand: Go, Attach, Send, download, Done, once per call. Parallel removes the waiting, not the clicking.
 
 ## Triage
 
@@ -174,19 +174,19 @@ Routine deterministic work includes direct file operations, mechanical formattin
 - If routine: proceed locally.
 - If uncertain and the consequence matters: use a Web call.
 
-Do not use a Web call to implement or repair GPT Web Call itself unless Sina explicitly requests that exception.
+Do not use a Web call to implement or repair GPT Web Call itself unless the operator explicitly requests that exception.
 
 ## Call decomposition and continuation
 
 Do not mechanically pre-plan a long chain of calls when the correct reasoning process is itself uncertain. The first bounded call may be a planning/architecture call that asks ChatGPT Web to recommend the necessary reasoning stages, number and types of later calls, dependencies, and context required for each.
 
-Codex or Claude Code then evaluates that advice and prepares only the next warranted exchange. Every later call is separately packaged and authorized by Sina. After each result, reassess whether to accept and integrate it, request criticism or correction, run another specialist call, or stop. ChatGPT Web may recommend the process, but it does not create active calls, choose private files, or bypass Sina's authorization.
+Codex or Claude Code then evaluates that advice and prepares only the next warranted exchange. Every later call is separately packaged and authorized by the operator. After each result, reassess whether to accept and integrate it, request criticism or correction, run another specialist call, or stop. ChatGPT Web may recommend the process, but it does not create active calls, choose private files, or bypass the operator's authorization.
 
 ## Roles and control boundary
 
 - Codex or Claude Code classifies the work, chooses context, creates the request, prepares the exchange, checks the returned work, and integrates only accepted conclusions.
 - ChatGPT Web performs the bounded assignment. It may reason, research when authorized, investigate, plan, or create requested artifacts.
-- Sina authorizes every call. Sina clicks **Go**, ChatGPT's real **Attach files**, ChatGPT's native **Send**, each download control, and **Done and validate**.
+- The operator authorizes every call. The operator clicks **Go**, ChatGPT's real **Attach files**, ChatGPT's native **Send**, each download control, and **Done and validate**.
 - The extension never presses Send and never reads ChatGPT's response page.
 - The companion moves only downloads deterministically bound to the active call. Unrelated downloads remain untouched.
 
@@ -207,14 +207,14 @@ Workflow:
 4. Semantic acceptance is unchanged and remains the orchestrating session's job. Subagent output is advisory exactly as Web output is.
 5. Correction rounds: the extension repair flow does not apply. Diagnose with `defects --exchange`, then either continue the same subagent (send it the defect list) for mechanical delivery defects, or spawn a fresh subagent — new request ID, original exchange preserved — when the reasoning itself must be redone.
 
-Rules that do not relax: one exchange per responder at a time, no filename collisions with any call that can still receive files, no silent edits to returned evidence, Sina authorizes each call before it is spawned, and never execute returned scripts or active content merely because validation passed.
+Rules that do not relax: one exchange per responder at a time, no filename collisions with any call that can still receive files, no silent edits to returned evidence, the operator authorizes each call before it is spawned, and never execute returned scripts or active content merely because validation passed.
 
 ## Status check and command location
 
-Commands may be run from the canonical root:
+Commands are run from the system root, the directory holding `gptwebcall.cmd`:
 
 ```powershell
-cd C:\GptWebCall
+cd <system root>
 .\gptwebcall.cmd active
 .\gptwebcall.cmd list
 ```
@@ -222,7 +222,7 @@ cd C:\GptWebCall
 From another directory, invoke the wrapper by absolute path:
 
 ```powershell
-& 'C:\GptWebCall\gptwebcall.cmd' active
+& '<system root>\gptwebcall.cmd' active
 ```
 
 Every CLI command emits one JSON object. `ok: true` contains `result`; `ok: false` contains `error` and exits nonzero.
@@ -332,18 +332,18 @@ Prepare and inspect:
 .\gptwebcall.cmd show --exchange YYYY-MM-DD_HHMMSS_short_subject
 ```
 
-Before telling Sina to click Go, verify the manifest lists exactly the intended files, the subject and request ID are correct, and `expected_main_json` is unambiguous.
+Before telling the operator to click Go, verify the manifest lists exactly the intended files, the subject and request ID are correct, and `expected_main_json` is unambiguous.
 
 ## Normal extension workflow
 
-1. Sina opens the GPT Web Call side panel and selects the prepared call.
-2. Sina clicks **Go**. The companion verifies the frozen request files; monitoring starts; ChatGPT opens.
-3. The extension waits. Sina clicks ChatGPT's real **Attach files** control.
+1. The operator opens the GPT Web Call side panel and selects the prepared call.
+2. The operator clicks **Go**. The companion verifies the frozen request files; monitoring starts; ChatGPT opens.
+3. The extension waits. The operator clicks ChatGPT's real **Attach files** control.
 4. The extension assigns exactly the manifest-approved request files to that chooser and detaches its debugger immediately.
-5. Sina reviews the filenames and clicks ChatGPT's native **Send**.
+5. The operator reviews the filenames and clicks ChatGPT's native **Send**.
 6. ChatGPT returns only downloadable files: the main JSON and any additional artifacts.
-7. Sina manually downloads every output. Files may be downloaded in any order. Artifacts downloaded before the main JSON remain pending until the main JSON identifies them.
-8. Sina clicks **Done and validate**. Monitoring stops first; the companion validates and writes `validation\VALIDATION_REPORT.json`.
+7. The operator manually downloads every output. Files may be downloaded in any order. Artifacts downloaded before the main JSON remain pending until the main JSON identifies them.
+8. The operator clicks **Done and validate**. Monitoring stops first; the companion validates and writes `validation\VALIDATION_REPORT.json`.
 9. The operating session reads the main response, validation report, and artifacts; it then performs semantic acceptance.
 
 The extension accepts Chrome duplicate suffixes such as `name (1).json` only when they bind unambiguously to an expected filename. Existing different response bytes are never overwritten.
@@ -397,7 +397,7 @@ After deterministic validation, Codex or Claude Code must:
 4. Decide whether to accept, partially use, reject, or request correction.
 5. Integrate only warranted conclusions into the external project.
 
-ChatGPT Web output remains advisory. Sina retains final authority.
+ChatGPT Web output remains advisory. The operator retains final authority.
 
 ## Correction rounds
 
@@ -407,7 +407,7 @@ A correction round diagnoses the exact defects and sends them back into the same
 
 1. `.\gptwebcall.cmd defects --exchange <exchange_id>` lists every defect as a structured record with `kind`, `target`, `expected`, and `observed`. It reads only; it changes nothing.
 2. The side panel's **Send correction round** button calls `call.repair`. The companion writes `repair\ROUND_N_PROMPT.txt` and `repair\ROUND_N_DEFECTS.json` inside the exchange, records the round in the manifest, and re-arms monitoring with a fresh download baseline.
-3. The extension types the correction prompt into the composer of the bound tab and stops. It never presses Send. Sina reviews the prompt and sends it. If the composer cannot be found, the prompt is still written to disk and shown in the side panel with a copy control.
+3. The extension types the correction prompt into the composer of the bound tab and stops. It never presses Send. The operator reviews the prompt and sends it. If the composer cannot be found, the prompt is still written to disk and shown in the side panel with a copy control.
 4. ChatGPT returns corrected files into the same conversation. Files that already validated are left alone.
 5. Click **Done and validate** again.
 
@@ -479,8 +479,8 @@ already released its names, so it blocks nothing.
 
 If Chrome or the extension restarts while a call is active:
 
-- Before Sina sent the request: reopen the side panel and click **Resume attachment**. The extension opens a new ChatGPT tab, rebinds the same exchange, and waits for Sina's real Attach click. It never sends automatically.
-- After Sina sent the request: do not resend it blindly. Download the outputs, place them manually if monitoring was lost, then use `done` for the active exchange.
+- Before the operator sent the request: reopen the side panel and click **Resume attachment**. The extension opens a new ChatGPT tab, rebinds the same exchange, and waits for the operator's real Attach click. It never sends automatically.
+- After the operator sent the request: do not resend it blindly. Download the outputs, place them manually if monitoring was lost, then use `done` for the active exchange.
 - To abandon the interrupted call: use the side-panel Stop action or `.\gptwebcall.cmd stop`.
 
 Always run `.\gptwebcall.cmd active` before recovery, and recover one exchange at a time by naming it with `--exchange`. Never start a second call against a tab that is already bound.
@@ -492,8 +492,8 @@ The permanent manual fallback keeps the workflow usable with the extension disab
 For a call that is still `PREPARED`:
 
 1. Use `list` and `show` to identify it.
-2. Upload exactly the files listed in `request_files` from that exchange's `request\` directory.
-3. Sina sends through ChatGPT and downloads the main JSON/artifacts.
+2. Upload exactly the two files named in `attach_files`: the generated prompt and the inputs archive, both from that exchange's `request\` directory. The other files there are the provenance record whose hashes are verified; they travel inside the archive, not beside it.
+3. The operator sends through ChatGPT and downloads the main JSON/artifacts.
 4. Copy the returned files into the exchange's `response\` directory using the exact expected names. Do not overwrite different bytes.
 5. Run:
 
