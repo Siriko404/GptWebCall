@@ -574,7 +574,22 @@ def finalize_exchange(
         raise RuntimeError(f"exchange cannot be validated from state {manifest.get('state')}")
     if downloads_dir is not None:
         ingest_from_downloads(root, exchange_id, downloads_dir)
+    # Validating a call nothing has answered is never what the operator meant, and
+    # it is destructive: validation would find no files, write INCOMPLETE, and
+    # INCOMPLETE releases the deliverable names and drops the call out of `list`.
+    # The call then looks gone and would not collect its downloads if sent. The
+    # check is made after ingesting, so a manual fallback whose files are still
+    # sitting in the downloads folder is not refused.
+    if manifest.get("state") == "PREPARED" and not any(
+        (exchange / "response").iterdir()
+    ):
+        raise RuntimeError(
+            f"nothing to validate; call {exchange_id} has not been answered. Use "
+            "`show` to inspect a prepared call: validating it would move it out of "
+            "PREPARED, and it could no longer receive downloads."
+        )
     report = validate_response(exchange)
+
     _write_json_atomic(exchange / "validation" / "VALIDATION_REPORT.json", report)
     manifest["state"] = report["status"]
     _write_json_atomic(manifest_path, manifest)

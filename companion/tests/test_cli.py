@@ -135,6 +135,63 @@ class CLITests(unittest.TestCase):
         self.assertEqual((code, error), (0, ""))
         self.assertEqual(json.loads(output)["result"]["state"], "STOPPED")
 
+    def test_validate_refuses_a_call_that_has_not_been_answered(self):
+        """Validating an unanswered call used to make it unsendable, silently.
+
+        `validate` reads as the natural check before sending, and the protocol
+        described it as accepting a prepared exchange. On a call with no response
+        files it found nothing, wrote INCOMPLETE, and INCOMPLETE releases the
+        deliverable names and drops the call out of `list`. The operator was left
+        with a call that had vanished from the panel and would not have collected
+        its downloads if sent. Two prepared calls were lost this way in one
+        session. The pre-send check is `show`, which changes nothing.
+        """
+        code, output, error = self.invoke("prepare", "--spec", str(self.spec_path))
+        self.assertEqual((code, error), (0, ""))
+        exchange_id = json.loads(output)["result"]["exchange_id"]
+
+        empty = Path(self.temp.name) / "empty-downloads"
+        empty.mkdir()
+        code, output, error = self.invoke(
+            "validate", "--exchange", exchange_id, "--downloads-dir", str(empty)
+        )
+
+        self.assertNotEqual(code, 0)
+        self.assertIn("has not been answered", json.loads(error)["error"])
+        code, output, _ = self.invoke("show", "--exchange", exchange_id)
+        self.assertEqual(json.loads(output)["result"]["state"], "PREPARED")
+        code, output, _ = self.invoke("list")
+        self.assertEqual(
+            [call["exchange_id"] for call in json.loads(output)["result"]], [exchange_id]
+        )
+
+    def test_validate_still_works_once_a_response_has_been_placed_by_hand(self):
+        """The manual fallback is what validate is for, and it must keep working."""
+        code, output, error = self.invoke("prepare", "--spec", str(self.spec_path))
+        exchange_id = json.loads(output)["result"]["exchange_id"]
+        response = self.root / "calls" / exchange_id / "response" / "cli_result.json"
+        response.write_text(
+            json.dumps(
+                {
+                    "request_id": "request_cli",
+                    "status": "COMPLETE",
+                    "artifacts_manifest": [],
+                    "delivery": ["cli_result.json"],
+                }
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+
+        empty = Path(self.temp.name) / "empty-downloads"
+        empty.mkdir()
+        code, output, error = self.invoke(
+            "validate", "--exchange", exchange_id, "--downloads-dir", str(empty)
+        )
+
+        self.assertEqual((code, error), (0, ""))
+        self.assertEqual(json.loads(output)["result"]["status"], "COMPLETE")
+
     def test_delete_removes_a_prepared_call_and_frees_its_filenames(self):
         code, output, error = self.invoke("prepare", "--spec", str(self.spec_path))
         self.assertEqual((code, error), (0, ""))
