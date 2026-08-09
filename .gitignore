@@ -16,3 +16,5 @@ Thumbs.db
 .DS_Store
 /nativehost.exe
 .pytest_cache/
+/HANDOFF.md
+/INCIDENT_*.md
