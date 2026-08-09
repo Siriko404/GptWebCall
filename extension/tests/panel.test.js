@@ -1,7 +1,13 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { describeStage, downloadGuard, formatBytes, formatElapsed } from "../lib/panel.js";
+import {
+  describeDownloadFailure,
+  describeStage,
+  downloadGuard,
+  formatBytes,
+  formatElapsed,
+} from "../lib/panel.js";
 
 const files = (...arrived) =>
   arrived.map((flag, index) => ({
@@ -77,4 +83,23 @@ test("an unknown stage falls back to its own name rather than going blank", () =
   assert.equal(describeStage("ATTACHED"), "Files attached. Review them, then click Send.");
   assert.equal(describeStage("SOMETHING_NEW"), "SOMETHING_NEW");
   assert.equal(describeStage(undefined), "Running.");
+});
+
+test("a download that could not be filed tells the operator how to recover", () => {
+  const message = describeDownloadFailure({
+    downloadId: 42,
+    message: "Native companion failed",
+    at: "2026-08-08T18:00:00Z",
+  });
+
+  assert.match(message, /Download 42/);
+  assert.match(message, /Native companion failed/);
+  // The recovery matters more than the cause: the bytes are safe, and the
+  // operator has to move them before Done stops monitoring.
+  assert.match(message, /still in your downloads folder/);
+});
+
+test("no failure renders nothing at all", () => {
+  assert.equal(describeDownloadFailure(null), "");
+  assert.equal(describeDownloadFailure({ downloadId: 1, message: "" }), "");
 });

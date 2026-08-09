@@ -7,7 +7,13 @@
  * only deliberately.
  */
 
-import { describeStage, formatBytes, formatElapsed, downloadGuard } from "./lib/panel.js";
+import {
+  describeStage,
+  formatBytes,
+  formatElapsed,
+  downloadGuard,
+  describeDownloadFailure,
+} from "./lib/panel.js";
 
 const el = (id) => document.querySelector(`#${id}`);
 
@@ -32,6 +38,7 @@ const historyToggle = el("history-toggle");
 const health = el("health");
 const companionLine = el("companion-line");
 const errorLine = el("error");
+const downloadFailure = el("download-failure");
 const reloadButton = el("reload-button");
 
 let repairTarget = null;
@@ -109,6 +116,7 @@ async function refresh() {
   resumeButton.hidden = !(state.active?.length && (state.handoffs ?? []).length === 0);
   repairTarget = state.repairExchangeId;
   repairButton.hidden = !state.canRepair;
+  renderDownloadFailure(state.lastDownloadFailure);
   renderResult(state.lastReport);
   scheduleTick(state.handoffs ?? []);
 }
@@ -279,6 +287,12 @@ function actionButton(label, className, message) {
     }),
   );
   return button;
+}
+
+function renderDownloadFailure(failure) {
+  const message = describeDownloadFailure(failure);
+  downloadFailure.textContent = message;
+  downloadFailure.hidden = message === "";
 }
 
 /* ---------- results ---------- */

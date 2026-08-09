@@ -44,12 +44,12 @@ chrome.debugger.onEvent.addListener((source, method, params) => {
 
 
 chrome.downloads.onCreated.addListener((downloadItem) => {
-  observeCreatedDownload(downloadItem).catch(() => undefined);
+  observeCreatedDownload(downloadItem).catch((error) => recordDownloadFailure(downloadItem?.id, error));
 });
 
 
 chrome.downloads.onChanged.addListener((delta) => {
-  submitCompletedDownload(delta).catch(() => undefined);
+  submitCompletedDownload(delta).catch((error) => recordDownloadFailure(delta?.id, error));
 });
 
 
@@ -103,7 +103,7 @@ async function getStatus() {
     nativeCommand("calls.active"),
     nativeCommand("calls.progress"),
     nativeCommand("calls.recent"),
-    chrome.storage.session.get(["handoffs", "lastReport", "lastHandoff"]),
+    chrome.storage.session.get(["handoffs", "lastReport", "lastHandoff", "lastDownloadFailure"]),
   ]);
   const handoffs = stored.handoffs ?? {};
   return {
@@ -118,6 +118,7 @@ async function getStatus() {
     active: Array.isArray(active) && active.length === 0 ? null : active,
     handoffs: Object.values(handoffs),
     lastReport: stored.lastReport ?? null,
+    lastDownloadFailure: stored.lastDownloadFailure ?? null,
     canRepair: Boolean(
       stored.lastReport?.status === "INCOMPLETE"
       && Number.isInteger(stored.lastHandoff?.tabId),
@@ -131,6 +132,7 @@ async function beginGo(exchangeId) {
   if (typeof exchangeId !== "string" || !exchangeId) {
     throw new Error("Select a prepared call first");
   }
+  await chrome.storage.session.set({ lastDownloadFailure: null });
   const tab = await chrome.tabs.create({ url: CHATGPT_URL, active: true });
   if (!Number.isInteger(tab.id)) {
     throw new Error("Chrome did not create a usable ChatGPT tab");
@@ -423,6 +425,30 @@ async function submitCompletedDownload(delta) {
   };
   await writeHandoff(updated);
   await broadcastStatus(updated);
+}
+
+
+/* A download that fails to file itself is the one failure nobody can see. The
+ * file sits in the downloads folder, the panel shows nothing, and validation
+ * later reports it missing with no hint that anything went wrong. These
+ * listeners used to discard the error entirely.
+ *
+ * It is recorded, not retried. A retry could file an ambiguous filename into the
+ * wrong exchange, and filename is the only thing attribution has to go on.
+ */
+async function recordDownloadFailure(downloadId, error) {
+  try {
+    await chrome.storage.session.set({
+      lastDownloadFailure: {
+        downloadId: Number.isInteger(downloadId) ? downloadId : null,
+        message: error?.message ?? String(error),
+        at: new Date().toISOString(),
+      },
+    });
+    await broadcastStatus(null);
+  } catch (_ignored) {
+    // Session storage is the last place left to report to.
+  }
 }
 
 

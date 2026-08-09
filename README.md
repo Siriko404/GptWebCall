@@ -130,8 +130,7 @@ The manual path is permanent, not a fallback that rots. Upload the two files a c
 ## Known limits
 
 - Windows and Chrome only.
-- The companion looks for downloads in `%USERPROFILE%\Downloads`. If Chrome saves elsewhere, set `GPTWEBCALL_DOWNLOADS_DIR`, or pass `--downloads-dir` when validating.
-- Unclaimed downloads accumulate in `state/PENDING_DOWNLOADS.json` and are not pruned automatically.
+- The companion looks for downloads in `%USERPROFILE%\Downloads`. The installer checks this against Chrome's own setting and tells you if they differ; set `GPTWEBCALL_DOWNLOADS_DIR` to fix it, or pass `--downloads-dir` when validating.
 - `tests/e2e/` still encodes an older request contract and is not yet a release gate. The unit suites are current.
 
 ## Uninstall

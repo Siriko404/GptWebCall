@@ -74,3 +74,20 @@ export function downloadGuard(progress, forced = false) {
     doneLabel: `Done and validate (${progress.received}/${progress.expected})`,
   };
 }
+
+
+export function describeDownloadFailure(failure) {
+  // The operator needs the recovery, not the stack trace: the bytes are safe in
+  // the downloads folder and the exchange is still waiting for them.
+  if (!failure || typeof failure.message !== "string" || failure.message === "") {
+    return "";
+  }
+  const which = Number.isInteger(failure.downloadId)
+    ? `Download ${failure.downloadId}`
+    : "A download";
+  return (
+    `${which} was not filed into its call: ${failure.message}. ` +
+    "The file is still in your downloads folder. Copy it into the exchange's " +
+    "response folder, or download it again before clicking Done."
+  );
+}
