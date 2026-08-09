@@ -7,7 +7,7 @@ import re
 import shutil
 import tempfile
 import zipfile
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -85,7 +85,9 @@ def handle_completed_download(root: Path, download: dict[str, Any]) -> dict[str,
             main = _stored_main(record)
             if main is None:
                 continue
-            artifact = _matching_artifact(main, source.name)
+            artifact = _matching_artifact(
+                main, source.name, _reserved_artifacts(record["exchange_path"])
+            )
             if artifact is not None:
                 claims.append((record, artifact))
         if len(claims) > 1:
@@ -694,14 +696,45 @@ def _parse_main_response(
     return main
 
 
+def _reserved_artifacts(exchange_path: Any) -> set[str] | None:
+    """The artifact filenames a call reserved, or None when it reserved none.
+
+    `expected_artifacts` is optional, so an absent or empty list means the call
+    made no promise about what comes back and the main JSON stays the only
+    authority. Where the list exists it is the authority, and it is one the
+    responder cannot rewrite.
+    """
+    try:
+        manifest = _read_json_object(
+            Path(exchange_path) / "EXCHANGE_MANIFEST.json", "EXCHANGE_MANIFEST"
+        )
+    except (FileNotFoundError, ValueError):
+        return None
+    declared = manifest.get("expected_artifacts")
+    if not declared:
+        return None
+    return {str(name).casefold() for name in declared}
+
+
 def _matching_artifact(
-    main: dict[str, Any], actual_name: str
+    main: dict[str, Any], actual_name: str, reserved: set[str] | None = None
 ) -> dict[str, Any] | None:
+    """The manifest entry a download satisfies, if the call may accept it at all.
+
+    A response names its own artifacts, so with no reservation the responder
+    decides what the exchange will accept — including names that are members of
+    the outputs archive rather than downloads in their own right. Where the call
+    reserved its artifact filenames, only those are filed; anything else is left
+    in the downloads folder untouched.
+    """
     for artifact in main["artifacts_manifest"]:
-        if artifact["status"] == "CREATED" and _matches_expected_name(
-            actual_name, artifact["filename"]
-        ):
-            return artifact
+        if artifact["status"] != "CREATED":
+            continue
+        if not _matches_expected_name(actual_name, artifact["filename"]):
+            continue
+        if reserved is not None and artifact["filename"].casefold() not in reserved:
+            continue
+        return artifact
     return None
 
 
@@ -725,6 +758,41 @@ def _load_pending(root: Path) -> list[dict[str, Any]]:
     return items if isinstance(items, list) else []
 
 
+PENDING_TTL_DAYS = 7
+
+
+def _prune_pending(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Drop pending downloads that can never be released.
+
+    An artifact downloaded before any main JSON waits here until some call names
+    it. Nothing ever removed an entry that was never named, so the pool grew for
+    the life of the installation — one real installation held 71, the oldest
+    eighteen days old, most of them files from calls that had long since
+    finished. A pool that only grows is a pool nobody reads.
+
+    Two entries are droppable. One whose file is gone can never be moved. One
+    older than the window belongs to a call that has finished, since a call is
+    driven by hand in a single sitting. Entries with no timestamp predate this
+    field and are treated as expired for the same reason.
+    """
+    floor = datetime.now(timezone.utc) - timedelta(days=PENDING_TTL_DAYS)
+    kept: list[dict[str, Any]] = []
+    for item in items:
+        filename = item.get("filename")
+        if not isinstance(filename, str) or not Path(filename).is_file():
+            continue
+        held_at = item.get("held_at")
+        if not isinstance(held_at, str):
+            continue
+        try:
+            if datetime.fromisoformat(held_at) < floor:
+                continue
+        except ValueError:
+            continue
+        kept.append(item)
+    return kept
+
+
 def _hold_pending(root: Path, download_id: int, source: Path) -> None:
     """Park a download that arrived before any call's main JSON could claim it.
 
@@ -732,10 +800,16 @@ def _hold_pending(root: Path, download_id: int, source: Path) -> None:
     main JSON cannot be attributed yet, so it waits until some call's main JSON
     names it.
     """
-    pending = _load_pending(root)
+    pending = _prune_pending(_load_pending(root))
     if any(item.get("id") == download_id for item in pending):
         return
-    pending.append({"id": download_id, "filename": str(source)})
+    pending.append(
+        {
+            "id": download_id,
+            "filename": str(source),
+            "held_at": datetime.now(timezone.utc).isoformat(),
+        }
+    )
     _write_json_atomic(_pending_path(root), {"downloads": pending})
 
 
@@ -752,7 +826,7 @@ def _release_pending(
         path = Path(pending["filename"])
         if not path.is_file():
             continue
-        artifact = _matching_artifact(main, path.name)
+        artifact = _matching_artifact(main, path.name, _reserved_artifacts(exchange))
         if artifact is None:
             remaining.append(pending)
             continue
@@ -763,7 +837,7 @@ def _release_pending(
             moved.append(name)
         else:
             remaining.append(pending)
-    _write_json_atomic(_pending_path(root), {"downloads": remaining})
+    _write_json_atomic(_pending_path(root), {"downloads": _prune_pending(remaining)})
     return moved
 
 
