@@ -15,16 +15,24 @@ native-messaging host, and spend live model interactions.
 
 ## Install for Claude Code
 
-The plugin ships inside this repository, so there is nothing to reconstruct:
+The plugin ships inside this repository as its own local marketplace, so there
+is nothing to build or copy. Inside Claude Code:
+
+```text
+/plugin marketplace add <path-to-this-repo>\skill\webcall
+/plugin install webcall@webcall-local
+```
+
+**Then restart Claude Code.** Commands are registered at startup; they will not
+appear in the session that installed them.
+
+After the restart, `/webcall:` autocompletes to `init`, `prep`, and `menu`.
+
+To try it for one session without installing:
 
 ```powershell
 claude --plugin-dir "<path-to-this-repo>\skill\webcall"
 ```
-
-Then `/webcall:init`, `/webcall:prep`, `/webcall:menu`.
-
-To load it in every session instead, add the same directory as a local plugin
-through `/plugin`.
 
 ## Codex and other hosts
 
@@ -39,16 +47,19 @@ the same three workflows as instructions.
 
 ```
 skill/
-  README.md                        this file
+  README.md                          this file
   webcall/
-    .claude-plugin/plugin.json     namespace: webcall
-    references/OPERATING_CORE.md   read once per session, by all three
-    references/SMOKE_TEST.md       read only when a smoke test is due
-    skills/init/SKILL.md
-    skills/prep/SKILL.md
-    skills/menu/SKILL.md
+    .claude-plugin/plugin.json       namespace: webcall
+    .claude-plugin/marketplace.json  lets this directory install itself
+    commands/{init,prep,menu}.md     the three slash commands
+    skills/{init,prep,menu}/SKILL.md the workflow each command follows
+    references/OPERATING_CORE.md     read once per session, by all three
+    references/SMOKE_TEST.md         read only when a smoke test is due
     adapters/codex/AGENTS.md
 ```
+
+The commands are thin: each reads the operating core, then follows its skill.
+The skill bodies hold the actual workflow, so the two hosts share one text.
 
 `OPERATING_CORE.md` holds what a session must know before its first action.
 Everything rarer stays in `WEB_CALL_PROTOCOL.md` at the repository root, which
