@@ -73,6 +73,12 @@ If the panel says the companion is unavailable, reload the extension before rein
 
 Point your agent session at [`WEB_CALL_PROTOCOL.md`](WEB_CALL_PROTOCOL.md). That file is the complete operating contract: how to decide a task is worth a call, how to construct the request, what the response must contain, how validation reads, and how to recover. It is written to be handed to a fresh session with no other context.
 
+For Claude Code there is a shorter path. [`skill/`](skill/README.md) ships three commands — `/webcall:init`, `/webcall:prep`, `/webcall:menu` — that install the system, prepare a call, and cover everything else, loading the protocol only where it is needed:
+
+```powershell
+claude --plugin-dir .\skill\webcall
+```
+
 The agent prepares a call:
 
 ```powershell
