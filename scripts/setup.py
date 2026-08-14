@@ -85,12 +85,25 @@ def chrome_executable() -> str | None:
 
 
 def stage_on_clipboard(text: str) -> bool:
-    """So the folder can be pasted into Chrome's picker, not navigated to."""
+    """Put the folder on the clipboard, and only say so if it round-trips.
+
+    `clip.exe` takes UTF-16LE on stdin and this checkout's path survives it
+    intact. It is still read back before the operator is told to paste, because
+    the failure it would otherwise produce is the worst kind: a mangled path
+    pasted into Chrome's folder picker, in the one step the installer exists to
+    make foolproof, with nothing having reported a problem.
+    """
     try:
         subprocess.run("clip", input=text.encode("utf-16-le"), check=True, shell=True)
+        readback = subprocess.run(
+            ["powershell", "-NoProfile", "-Command", "Get-Clipboard -Raw"],
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout
     except (OSError, subprocess.CalledProcessError):
         return False
-    return True
+    return readback.strip() == text
 
 
 def pinned_origin_id() -> str | None:
@@ -117,14 +130,15 @@ def pinned_origin_id() -> str | None:
     return str(origins[0]).removeprefix("chrome-extension://").rstrip("/")
 
 
-def install_extension(extension: Path, no_browser: bool) -> int:
+def install_extension(extension: Path, no_browser: bool) -> None:
     """Walk the operator through the one step, then verify it happened."""
     print("\n--- Chrome extension ---")
     already = loaded_extension_id(extension)
     if already:
         print(f"Chrome already has this extension loaded as {already}.")
         print("Reload it in chrome://extensions so it picks up this checkout.")
-        return confirm_pinned_id(already)
+        confirm_pinned_id(already)
+        return
 
     print("This is the one step a script cannot do: Chrome removed")
     print("--load-extension from stable, so the folder has to be chosen by hand.")
@@ -138,7 +152,7 @@ def install_extension(extension: Path, no_browser: bool) -> int:
 
     if no_browser:
         print("\n(--no-browser: not opening Chrome, not waiting.)")
-        return 0
+        return
 
     chrome = chrome_executable()
     if chrome:
@@ -155,21 +169,21 @@ def install_extension(extension: Path, no_browser: bool) -> int:
         found = wait_for_extension(extension, timeout=300.0)
     except KeyboardInterrupt:
         print("\nSkipped. Rerun this script once the extension is loaded.")
-        return 0
+        return
     if not found:
         print("\nChrome has not recorded it yet. Rerun this script once it is loaded;")
         print("nothing already installed is undone by running it again.")
-        return 0
+        return
     print(f"Chrome loaded it as {found}.")
-    return confirm_pinned_id(found)
+    confirm_pinned_id(found)
 
 
-def confirm_pinned_id(actual: str) -> int:
+def confirm_pinned_id(actual: str) -> None:
     """The host pins one origin. If Chrome disagrees, repin rather than report."""
     pinned = pinned_origin_id()
     if pinned == actual:
         print(f"The native host is pinned to the same id. ({actual})")
-        return 0
+        return
     print(f"The native host is pinned to {pinned}, but Chrome loaded {actual}.")
     print("Repinning.")
     run(
@@ -186,7 +200,6 @@ def confirm_pinned_id(actual: str) -> int:
         "Native messaging host (repin)",
     )
     print("Reload the extension in chrome://extensions so it reconnects.")
-    return 0
 
 
 def main(argv: list[str]) -> int:

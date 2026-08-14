@@ -50,7 +50,7 @@ macOS and Linux are not supported. Some Python is portable, but the installer, t
 
 ## Install
 
-**Give Claude Code this repository's link and say "install this".** It reads this file and runs the whole thing. You click twice and restart once; everything else is done for you.
+**Give Claude Code this repository's link and say "install this".** It reads this file and runs the whole thing. Your part is one folder-picker click and one restart of Claude Code. Everything else, including checking that the click worked, is done for you.
 
 **1. Clone and run one command.** Clone somewhere permanent — the generated host manifest stores absolute paths, so moving the repository afterwards means installing again.
 
