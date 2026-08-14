@@ -6,6 +6,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from companion.core import (
+    call_progress,
     list_ready_calls,
     load_active_call,
     load_active_calls,
@@ -60,6 +61,35 @@ class CoreTests(unittest.TestCase):
                 {"path": str(self.context), "filename": self.context.name},
             ],
         }
+
+    def test_progress_counts_downloads_and_not_the_main_json(self):
+        """The panel's checklist is what the operator waits on.
+
+        It listed the main JSON too, which under one-zip-out is a file nobody
+        downloads: it is written out of the archive when the archive lands. The
+        operator was shown two files to wait for, one of which would never
+        arrive on its own, beside a checklist that could not complete until it
+        silently appeared.
+        """
+        manifest = prepare_call(self.root, self.spec(), self.now)
+        start_call(self.root, manifest["exchange_id"], 11, [])
+
+        [call] = call_progress(self.root)
+
+        self.assertEqual(
+            [item["filename"] for item in call["files"]], ["result_outputs.zip"]
+        )
+        self.assertEqual(call["expected"], 1)
+        self.assertEqual(call["received"], 0)
+        self.assertFalse(call["complete"])
+
+        response = self.root / "calls" / manifest["exchange_id"] / "response"
+        response.mkdir(parents=True, exist_ok=True)
+        (response / "result_outputs.zip").write_bytes(b"PK\x05\x06" + b"\x00" * 18)
+
+        [landed] = call_progress(self.root)
+        self.assertTrue(landed["complete"])
+        self.assertEqual(landed["received"], 1)
 
     def test_prepare_call_uses_one_timestamp_for_the_folder(self):
         manifest = prepare_call(self.root, self.spec(), self.now)

@@ -302,12 +302,20 @@ def list_recent_calls(root: Path, limit: int = 12) -> list[dict[str, Any]]:
 
 
 def call_progress(root: Path) -> list[dict[str, Any]]:
-    """Which expected files have actually landed, for every active call.
+    """Which expected downloads have actually landed, for every active call.
 
     The panel needs this to guard Done. Monitoring stops the moment Done is
     clicked, so anything still in flight at that point is never collected, and
     recovering it means copying files in by hand. Showing the checklist turns
     that trap into something the operator can simply see.
+
+    Downloads, and only downloads. This used to list the main JSON as well, and
+    under one-zip-out that is a file nobody will ever download: it comes out of
+    the archive when the archive lands. Listing it told the operator to wait for
+    a second file that was never coming, next to a checklist that could not
+    complete until it silently appeared. Whether the archive actually contained
+    it is a question for validation, which reports it as a missing file with its
+    own name.
     """
     root = Path(root).resolve()
     progress: list[dict[str, Any]] = []
@@ -321,8 +329,7 @@ def call_progress(root: Path) -> list[dict[str, Any]]:
         except (FileNotFoundError, ValueError):
             continue
         response_dir = exchange_dir / "response"
-        expected = [str(manifest.get("expected_main_json", ""))]
-        expected += [str(name) for name in manifest.get("expected_artifacts", [])]
+        expected = [str(name) for name in manifest.get("expected_artifacts", [])]
         files = []
         for name in expected:
             if not name:
@@ -334,7 +341,7 @@ def call_progress(root: Path) -> list[dict[str, Any]]:
                     "filename": name,
                     "arrived": arrived,
                     "size": path.stat().st_size if arrived else 0,
-                    "is_main": name == manifest.get("expected_main_json"),
+                    "is_main": False,
                 }
             )
         progress.append(
