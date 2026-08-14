@@ -68,8 +68,11 @@ class ProtocolTests(unittest.TestCase):
         self.assertIn("Send in a new conversation", protocol)
         self.assertIn("Send in the conversation I am in", protocol)
         # Resume once created a fresh tab unconditionally, which silently threw
-        # away the thread a conductor call was bound to.
-        self.assertIn("**Resume** resolves the destination the same way Go does", protocol)
+        # away the thread a conductor call was bound to. It reads the control
+        # now - but the control, not the call, is what carries the mode, and
+        # saying otherwise would promise a memory the code does not have.
+        self.assertIn("**Resume** reads the control too", protocol)
+        self.assertIn("not the mode any particular call was sent with", protocol)
 
         prep = (
             self.root / "skill" / "webcall" / "skills" / "prep" / "SKILL.md"

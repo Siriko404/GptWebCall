@@ -383,7 +383,7 @@ The panel's destination control sits above **Go** and has two settings. **Send i
 
 They are different products, not a convenience. A call sent into an existing thread is answered by a model that has already been argued with in that thread: intended in a conductor call, a contaminant in a bounded one. Decide which you are preparing before you prepare it, because a conductor request written to lean on prior context arrives incoherent in a fresh conversation, and a bounded request answered inside a long thread is no longer unsteered.
 
-The choice survives a browser restart, and **Resume** resolves the destination the same way Go does rather than assuming a fresh tab. Set the control before clicking either.
+**Resume** reads the control too, rather than assuming a fresh tab. What persists across a browser restart is the control's own position, not the mode any particular call was sent with — nothing records that per call, because the handoff that named the bound tab dies with the session. So Resume delivers to whatever the panel says *now*. Set the control before clicking either button, and set it again before resuming a call you started before a restart.
 
 The refusals are deliberate and none of them fall back. Sending into the current conversation is refused when there is no focused tab, when the focused tab cannot be proven to be `https://chatgpt.com/`, and when that conversation is already running another call. An unreadable tab address means the extension's `chatgpt.com` permission was declined; reload the extension and accept the prompt. Nothing about this reaches the companion, which takes `tab_id` as an opaque integer.
 
