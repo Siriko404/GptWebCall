@@ -64,22 +64,14 @@ def handle_completed_download(root: Path, download: dict[str, Any]) -> dict[str,
         if not candidates:
             return {"status": "IGNORED", "reason": "download predates Go"}
 
-        named_main = [
-            record
-            for record in candidates
-            if _matches_expected_name(source.name, _expected_main(record))
-        ]
-        if len(named_main) > 1:
-            return {
-                "status": "AMBIGUOUS",
-                "download_id": download_id,
-                "error": "several active calls expect "
-                f"{source.name}: "
-                + ", ".join(str(record["exchange_id"]) for record in named_main),
-            }
-        if named_main:
-            return _accept_main_json(root, named_main[0], source, download_id)
-
+        # A download under the main JSON's own name used to be accepted here.
+        # It cannot be right any more: the main response is a member of the one
+        # archive, so a loose copy beside it means the responder ignored the
+        # rule, and filing it quietly would let a two-file delivery validate as
+        # though it had obeyed. It falls through to IGNORED and is named there,
+        # which is what tells the operator the rule was broken. The archive is
+        # still the delivery, and if the response is not inside it the archive
+        # is refused with that filename in the error.
         named_archive = [
             record
             for record in candidates
@@ -371,32 +363,6 @@ def finish_call(
     return report
 
 
-def _accept_main_json(
-    root: Path, record: dict[str, Any], source: Path, download_id: int
-) -> dict[str, Any]:
-    exchange = Path(record["exchange_path"]).resolve()
-    expected_main = _expected_main(record)
-    supersede_round = _supersede_round(record)
-    record.setdefault("observed_download_ids", []).append(download_id)
-    try:
-        main = _parse_main_response(source, record["request_id"], expected_main)
-        _safe_move(source, exchange / "response" / expected_main, supersede_round)
-    except FileExistsError as error:
-        _save_active(root, record)
-        return {"status": "CONFLICT", "error": str(error)}
-    except (OSError, ValueError) as error:
-        _save_active(root, record)
-        return {"status": "INVALID", "error": str(error)}
-    _record_collected(record, expected_main)
-    _save_active(root, record)
-    return {
-        "status": "MOVED",
-        "download_id": download_id,
-        "exchange_id": record["exchange_id"],
-        "stored_name": expected_main,
-    }
-
-
 def _accept_outputs_archive(
     root: Path, record: dict[str, Any], source: Path, download_id: int
 ) -> dict[str, Any]:
@@ -543,24 +509,6 @@ def _expected_main(record: dict[str, Any]) -> str:
         )
         name = manifest["expected_main_json"]
     return _safe_name(str(name), "expected main JSON filename")
-
-
-def _stored_main(record: dict[str, Any]) -> dict[str, Any] | None:
-    """The already-collected main JSON for a call, or None when it is absent."""
-    expected_main = _expected_main(record)
-    path = Path(record["exchange_path"]) / "response" / expected_main
-    if not path.is_file():
-        return None
-    archive = _expected_archive(record)
-    try:
-        return _parse_main_response(
-            path,
-            record["request_id"],
-            expected_main,
-            (archive,) if archive else None,
-        )
-    except ValueError:
-        return None
 
 
 def validate_response(exchange_dir: Path) -> dict[str, Any]:

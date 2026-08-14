@@ -47,6 +47,22 @@ class ExtensionIdTests(unittest.TestCase):
                 self.assertEqual(len(value), 32)
                 self.assertTrue(set(value) <= set("abcdefghijklmnop"), value)
 
+    def test_the_derivation_does_not_depend_on_the_directory_existing(self):
+        """The pinned pair above was measured on a machine where that path
+        exists. `resolve()` is allowed to consult the filesystem, so if it ever
+        rewrote an existing path the test would pass there and fail on every
+        machine that has never had that directory. Same string in, same id out,
+        present or not."""
+        present = Path(__file__).resolve().parents[2] / "extension"
+        self.assertTrue(present.is_dir(), "fixture assumes this checkout")
+        absent = Path(str(present) + "-does-not-exist")
+
+        self.assertEqual(
+            derive_extension_id(present),
+            derive_extension_id(Path(str(present))),
+        )
+        self.assertNotEqual(derive_extension_id(present), derive_extension_id(absent))
+
     def test_a_different_directory_gets_a_different_id(self):
         """Two checkouts are two extensions, which is why the path is the input
         and why moving a checkout means installing again."""

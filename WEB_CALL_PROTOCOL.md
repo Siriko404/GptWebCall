@@ -98,6 +98,8 @@ Down:
 
 `expected_main_json` still names the main response. It is now the name of a **member** of that archive rather than a download of its own, and the companion writes it out beside the archive when the archive lands. Everything downstream — validation, `defects`, a repair round — reads it from `response\` exactly as before and knows nothing about where it travelled.
 
+**A loose main JSON is refused, not tolerated.** A responder that also offers the main JSON as its own download has broken the rule, and filing it quietly would let that delivery validate as though it had obeyed. The download is reported as ignored with its filename in the reason, and stays where Chrome put it. The archive is still the delivery; if the response is not inside it, the archive is refused with that filename in the error and kept as evidence.
+
 **Why one file back and not two.** A response used to arrive as several downloads in an order nobody controlled, so the companion needed a pool to hold whatever arrived before the main JSON could explain it. A download parked in that pool was invisible: three separate calls ended with files sitting in the Downloads folder, the panel showing nothing wrong, and validation later reporting them missing. One file cannot arrive out of order with itself. The pool is gone, and a download that matches no active call is now reported as ignored the moment it lands.
 
 **Say it in the prompt.** The companion cannot make ChatGPT return one archive; only the prompt can. Every prompt must state that the reply is exactly one downloadable `.zip`, name it, name the main JSON inside it, and say that every other created file goes in there too.

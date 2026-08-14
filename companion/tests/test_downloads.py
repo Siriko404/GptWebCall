@@ -195,15 +195,39 @@ class DownloadTests(unittest.TestCase):
         self.assertTrue(unrelated.exists())
 
     def test_wrong_request_id_is_rejected_without_moving(self):
-        main = self.download(
-            "result.json", self.main_json_bytes(request_id="another_request")
+        archive = self.delivery_archive(
+            main=self.main_json_bytes(request_id="another_request")
         )
 
-        result = handle_completed_download(self.root, self.completed(3, main))
+        result = handle_completed_download(self.root, self.completed(3, archive))
 
         self.assertEqual(result["status"], "INVALID")
         self.assertIn("request_id", result["error"])
-        self.assertTrue(main.exists())
+        # Both files are kept. They are what came back, and an operator told
+        # only "invalid" with nothing to open cannot tell what happened.
+        # Validation reads the same file and reports it invalid by name.
+        self.assertTrue((self.exchange / "response" / "fixture_outputs.zip").is_file())
+        self.assertTrue((self.exchange / "response" / "result.json").is_file())
+        report = validate_response(self.exchange)
+        self.assertEqual(report["status"], "INCOMPLETE")
+        self.assertIn("result.json", report["invalid_files"])
+
+    def test_a_loose_main_json_beside_the_archive_is_ignored(self):
+        """One zip out means exactly that.
+
+        A responder that also offers the main JSON as its own download has
+        broken the rule, and filing it quietly would let that delivery validate
+        as though it had obeyed. It is named in the reason instead, which is how
+        the operator finds out.
+        """
+        loose = self.download("result.json", self.main_json_bytes())
+
+        result = handle_completed_download(self.root, self.completed(3, loose))
+
+        self.assertEqual(result["status"], "IGNORED")
+        self.assertIn("result.json", result["reason"])
+        self.assertTrue(loose.exists())
+        self.assertFalse((self.exchange / "response" / "result.json").is_file())
 
     def test_a_loose_file_beside_the_archive_is_ignored_and_left_alone(self):
         """Only the archive is expected, so anything else is reported as
