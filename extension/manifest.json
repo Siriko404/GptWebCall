@@ -11,6 +11,9 @@
     "downloads",
     "storage"
   ],
+  "host_permissions": [
+    "https://chatgpt.com/*"
+  ],
   "background": {
     "service_worker": "service_worker.js",
     "type": "module"

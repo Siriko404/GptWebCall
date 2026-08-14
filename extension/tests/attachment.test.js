@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   attachmentBasenames,
+  buildFallbackAssignment,
   buildFileAssignment,
 } from "../lib/attachment.js";
 
@@ -66,6 +67,43 @@ test("rejects empty or non-absolute Windows request paths", () => {
   assert.throws(
     () => buildFileAssignment({ ...handoff, requestPaths: ["relative.txt"] }, { tabId: 42 }, { backendNodeId: 1 }),
     /absolute Windows/,
+  );
+});
+
+
+test("builds a fallback assignment from a queried file-input node", () => {
+  const result = buildFallbackAssignment(handoff, { tabId: 42 }, 123);
+
+  assert.deepEqual(result, {
+    method: "DOM.setFileInputFiles",
+    params: {
+      files: handoff.requestPaths,
+      nodeId: 123,
+    },
+  });
+});
+
+
+test("fallback rejects a missing or invalid node id", () => {
+  assert.throws(
+    () => buildFallbackAssignment(handoff, { tabId: 42 }, undefined),
+    /no file input node/,
+  );
+  assert.throws(
+    () => buildFallbackAssignment(handoff, { tabId: 42 }, 0),
+    /no file input node/,
+  );
+});
+
+
+test("fallback enforces the same tab binding and armed state", () => {
+  assert.throws(
+    () => buildFallbackAssignment(handoff, { tabId: 99 }, 123),
+    /bound tab/,
+  );
+  assert.throws(
+    () => buildFallbackAssignment({ ...handoff, armed: false }, { tabId: 42 }, 123),
+    /not armed/,
   );
 });
 

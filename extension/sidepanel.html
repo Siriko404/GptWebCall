@@ -30,6 +30,11 @@
         </div>
         <select id="call-select" aria-label="Prepared call"></select>
         <dl id="call-detail" class="detail"></dl>
+        <select id="go-mode" aria-label="Where to send this call">
+          <option value="new">Send in a new conversation</option>
+          <option value="current">Send in the conversation I am in</option>
+        </select>
+        <p id="go-mode-hint" class="hint"></p>
         <button id="go-button" class="primary" type="button">Go</button>
         <p class="hint">Go arms the tab. You still click Attach, Send, every
           download, and Done.</p>

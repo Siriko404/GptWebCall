@@ -18,6 +18,8 @@ import {
 const el = (id) => document.querySelector(`#${id}`);
 
 const select = el("call-select");
+const goMode = el("go-mode");
+const goModeHint = el("go-mode-hint");
 const callDetail = el("call-detail");
 const readyCount = el("ready-count");
 const goButton = el("go-button");
@@ -49,7 +51,33 @@ let ticking = null;
 // stopped auto-capturing downloads. It also reloads this panel, so no refresh.
 reloadButton.addEventListener("click", () => chrome.runtime.reload());
 
-goButton.addEventListener("click", () => run(() => send({ type: "GO", exchangeId: select.value })));
+/* The destination survives a browser restart, because getting it wrong is
+ * expensive in one direction: a call meant for a long-running thread that opens
+ * a blank conversation loses the context the thread existed to accumulate. */
+const GO_MODE_HINTS = {
+  new: "A fresh conversation. Nothing it has been told before affects the answer.",
+  current: "Lands in whichever ChatGPT conversation is focused when you click Go.",
+};
+
+goMode.addEventListener("change", () => {
+  chrome.storage.local.set({ goMode: goMode.value });
+  renderGoMode();
+});
+
+function renderGoMode() {
+  goModeHint.textContent = GO_MODE_HINTS[goMode.value] ?? "";
+}
+
+chrome.storage.local.get("goMode").then((stored) => {
+  if (stored.goMode === "current" || stored.goMode === "new") {
+    goMode.value = stored.goMode;
+  }
+  renderGoMode();
+});
+
+goButton.addEventListener("click", () =>
+  run(() => send({ type: "GO", exchangeId: select.value, mode: goMode.value })),
+);
 resumeButton.addEventListener("click", () => run(() => send({ type: "RESUME" })));
 
 repairButton.addEventListener("click", () =>

@@ -1,5 +1,6 @@
 import {
   attachmentBasenames,
+  buildFallbackAssignment,
   buildFileAssignment,
 } from "./lib/attachment.js";
 import {
@@ -8,10 +9,10 @@ import {
   claimCompletedDownload,
   handoffForTab,
 } from "./lib/downloads.js";
+import { CHATGPT_URL, chooseTargetTab } from "./lib/target.js";
 
 
 const NATIVE_HOST = "com.sina.gptwebcall";
-const CHATGPT_URL = "https://chatgpt.com/";
 
 
 chrome.runtime.onInstalled.addListener(() => {
@@ -58,7 +59,7 @@ async function handlePanelMessage(message) {
     case "GET_STATUS":
       return getStatus();
     case "GO":
-      return beginGo(message.exchangeId);
+      return beginGo(message.exchangeId, message.mode);
     case "RESUME":
       return resumeCall(message.exchangeId);
     case "STOP":
@@ -128,15 +129,45 @@ async function getStatus() {
 }
 
 
-async function beginGo(exchangeId) {
+/* Which conversation the call lands in.
+ *
+ * "new" starts a fresh ChatGPT conversation — the bounded, self-contained call
+ * the protocol is built around. "current" binds the conversation already open in
+ * the focused tab, so a call can be delivered into a long-running thread that
+ * has accumulated context on purpose. The two are different products: a call
+ * sent into an existing thread is answered by a model that has already been
+ * argued with, which is the point in conductor mode and a contaminant otherwise.
+ *
+ * The companion does not care. It takes tab_id as an opaque integer and
+ * call.repair already hands it a tab that has been in use, so this is entirely a
+ * question of which tab id we resolve here.
+ */
+async function resolveTargetTab(mode) {
+  const [activeTab] = mode === "current"
+    ? await chrome.tabs.query({ active: true, lastFocusedWindow: true })
+    : [null];
+  const choice = chooseTargetTab({
+    mode,
+    activeTab,
+    handoffs: mode === "current" ? await readHandoffs() : {},
+  });
+  if (!choice.create) {
+    return { id: choice.tabId };
+  }
+  const created = await chrome.tabs.create({ url: CHATGPT_URL, active: true });
+  if (!Number.isInteger(created.id)) {
+    throw new Error("Chrome did not create a usable ChatGPT tab");
+  }
+  return created;
+}
+
+
+async function beginGo(exchangeId, mode) {
   if (typeof exchangeId !== "string" || !exchangeId) {
     throw new Error("Select a prepared call first");
   }
   await chrome.storage.session.set({ lastDownloadFailure: null });
-  const tab = await chrome.tabs.create({ url: CHATGPT_URL, active: true });
-  if (!Number.isInteger(tab.id)) {
-    throw new Error("Chrome did not create a usable ChatGPT tab");
-  }
+  const tab = await resolveTargetTab(mode);
   const existingDownloads = await chrome.downloads.search({});
   let started = false;
   try {
@@ -146,7 +177,14 @@ async function beginGo(exchangeId) {
       download_baseline: existingDownloads.map((item) => item.id),
     });
     started = true;
-    const handoff = handoffFrom(result, tab.id, exchangeId, "Click Attach files in ChatGPT.");
+    const handoff = handoffFrom(
+      result,
+      tab.id,
+      exchangeId,
+      mode === "current"
+        ? "Delivering into the open conversation. Click Attach files there."
+        : "Click Attach files in ChatGPT.",
+    );
     await writeHandoff(handoff);
     await armTab(tab.id);
     return handoff;
@@ -228,7 +266,17 @@ async function armTab(tabId) {
 async function completeAttachment(source, params) {
   const handoffs = await readHandoffs();
   const handoff = handoffForTab(handoffs, source.tabId);
-  const assignment = buildFileAssignment(handoff, source, params);
+  let assignment;
+  try {
+    assignment = buildFileAssignment(handoff, source, params);
+  } catch (error) {
+    if (!error.message.includes("backendNodeId")) {
+      throw error;
+    }
+    // ChatGPT's chooser no longer names its input node; find it ourselves.
+    const nodeId = await findFileInputNode(source);
+    assignment = buildFallbackAssignment(handoff, source, nodeId);
+  }
   await chrome.debugger.sendCommand(source, assignment.method, assignment.params);
   await chrome.debugger.sendCommand(
     { tabId: source.tabId },
@@ -244,6 +292,25 @@ async function completeAttachment(source, params) {
   };
   await writeHandoff(updated);
   await broadcastStatus(updated);
+}
+
+
+/* Fallback for a chooser event with no backendNodeId: the composer's hidden
+ * <input type=file> is still on the page, so locate it by query. When several
+ * exist, the last is the one ChatGPT's current composer wired most recently.
+ */
+async function findFileInputNode(source) {
+  await chrome.debugger.sendCommand(source, "DOM.enable", {});
+  const { root } = await chrome.debugger.sendCommand(source, "DOM.getDocument", {});
+  const { nodeIds } = await chrome.debugger.sendCommand(
+    source,
+    "DOM.querySelectorAll",
+    { nodeId: root.nodeId, selector: "input[type=file]" },
+  );
+  if (!Array.isArray(nodeIds) || nodeIds.length === 0) {
+    throw new Error("no <input type=file> found on the ChatGPT page");
+  }
+  return nodeIds.at(-1);
 }
 
 
