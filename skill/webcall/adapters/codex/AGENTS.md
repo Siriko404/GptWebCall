@@ -14,8 +14,10 @@ the bodies link to it as `../../references/`.
 
 ## Installing
 
-Claude Code has a plugin manifest here already, so `python
-scripts/install_skill.py` at the repository root does it.
+Claude Code has a plugin manifest here already, so `python scripts/setup.py` at
+the repository root does it — along with the native-messaging host, without
+which these skills have nothing to drive. `python scripts/install_skill.py`
+registers the skills alone.
 
 For Codex, and for any other host, install these three folders the way that host
 installs skills, then invoke them explicitly by name. **We have not verified the

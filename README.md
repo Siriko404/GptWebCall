@@ -8,7 +8,7 @@ A coding agent — Claude Code, Codex — is good at knowing your project and ba
 
 ```
 agent prepares  →  you: Go → Attach → Send  →  you download  →  companion validates
-   (2 files)         (your browser, your click)                  (hashes, sizes, names)
+  (one .zip)         (your browser, your click)   (one .zip)     (hashes, sizes, names)
 ```
 
 ## What it does not do
@@ -32,48 +32,54 @@ Listed first because it is the point.
 | Go 1.24+ | builds a 53-line launcher that starts the companion. Not a runtime dependency |
 | PowerShell | install and uninstall scripts |
 
+`python scripts/setup.py` checks all of these and names the missing one before it writes anything.
+
 Node is needed only to run the extension's tests. The extension has no dependencies and no build step.
 
 macOS and Linux are not supported. Some Python is portable, but the installer, the registry key, and the attachment path checks are not.
 
 ## Install
 
-**Hand this file to Claude Code and say "install this".** The three steps below are all it needs. Two of them require your hands and are marked; Claude cannot click in Chrome.
+**Hand this file to Claude Code and say "install this".** Claude runs everything below. Two steps need your hands, and only because nothing else can do them: Chrome has no supported way to let a script load an unpacked extension, and slash commands register when Claude Code starts.
 
-**1. Clone somewhere permanent, and register the skills.** The generated host manifest stores an absolute path, so moving the repository afterwards means installing again — not a temporary directory.
+**1. Clone somewhere permanent, then run one command.** The generated host manifest stores absolute paths, so moving the repository afterwards means installing again. Not a temporary directory.
 
 ```powershell
 git clone https://github.com/Siriko404/GptWebCall.git
 cd GptWebCall
-python scripts/install_skill.py
+python scripts/setup.py
 ```
 
-That writes two keys into `~/.claude/settings.json` — the same two `/plugin marketplace add` and `/plugin install` write — and backs the file up first. `--dry-run` shows the change without making it.
+That checks every prerequisite before touching anything, builds the Go launcher, works out the extension's ID, registers the native-messaging host under `HKCU`, re-reads what it wrote, and registers the `webcall` skills with Claude Code. `--dry-run` prints the plan and changes nothing.
 
-**2. Restart Claude Code.** Commands register at startup, so `/webcall:*` appears in the next session, not the one that installed it.
+You never copy an extension ID. Chrome derives it from where the directory sits on disk, so the installer reads it from Chrome when the extension is already loaded and computes it when it is not — which is also why the host can be registered before Chrome has ever seen it.
 
-If the commands are missing after the restart, type these two lines instead and restart again:
+**2. Load the extension** — *your hands*. `chrome://extensions` → Developer mode → **Load unpacked** → pick the `extension` folder the installer prints. Open the side panel: a green dot means the companion answered.
+
+**3. Restart Claude Code** — *your hands*. Then `/webcall:` autocompletes.
+
+**4. Run `/webcall:init` once.** It rechecks all of the above, runs the three test suites, and finishes with a live smoke test it invents on the spot rather than replaying a fixture — so a green dot is not the last word. It refuses to report success on a failing suite, a failed installer postflight, an extension ID Chrome disagrees with, or a failed smoke test.
+
+If `/webcall:` is still missing after the restart, type these two lines and restart again:
 
 ```text
 /plugin marketplace add <path-to-this-repo>\skill\webcall
 /plugin install webcall@webcall-local
 ```
 
-**3. Run `/webcall:init`.** It takes over from here: checks your prerequisites, runs the three test suites, walks you through the two steps that need hands — loading the unpacked extension in `chrome://extensions` and reading back its 32-character ID — registers the native host with that ID, and finishes by running a live smoke test it invents on the spot rather than replaying a fixture.
-
-It refuses to report success on a failed suite, an unverified extension ID, a failed installer postflight, or a failed smoke test.
-
 ## Use it
 
-Everything runs through three commands.
+Three commands, and one loop in the browser.
 
 | | |
 |---|---|
-| `/webcall:init` | install, or recheck an install, and smoke-test it |
 | `/webcall:prep` | prepare one call: unbiased request, explicit file list, unique routing names, pre-send check |
 | `/webcall:menu` | everything else — status, health, finish, recover, repair, stop, delete, manual fallback, watch, local responder |
+| `/webcall:init` | recheck the installation and smoke-test it |
 
-Then you drive the browser half: **Go** → click ChatGPT's own **Attach files** → review what attached → **Send** → download each returned file → **Done and validate**. No skill does any of that for you, by design.
+Then you drive the browser half: **Go** → click ChatGPT's own **Attach files** → review what attached → **Send** → download the one archive → **Done and validate**. No skill does any of that for you, by design.
+
+One `.zip` goes up, carrying the prompt as `000_READ_ME_FIRST.md`. One `.zip` comes back, carrying the response JSON and every created file. ChatGPT refuses loose `.md` uploads, and one file cannot arrive out of order with itself.
 
 Several calls can run at once, each bound to its own tab, as long as no two expect the same filename — attribution is by filename, because Chrome does not tell an extension which tab produced a download.
 

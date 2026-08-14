@@ -15,8 +15,12 @@ native-messaging host, and spend live model interactions.
 
 ## Install
 
-The plugin ships inside this repository as its own local marketplace, so there
-is nothing to build or copy. From the repository root:
+Normally you do not install this on its own. `python scripts/setup.py` at the
+repository root installs both halves — the native-messaging host and these
+skills — and the skills are useless without the host. See the top-level
+[`README.md`](../README.md).
+
+To register only the skills, from the repository root:
 
 ```powershell
 python scripts/install_skill.py

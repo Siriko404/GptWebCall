@@ -1,0 +1,159 @@
+"""The install is only worth anything if a stranger can run it.
+
+These cover the parts of it that are ordinary code: working out the extension
+ID, and the documents that tell an agent what to run. What Chrome does with a
+registry key is not testable here; what we hand Chrome is.
+"""
+
+from __future__ import annotations
+
+import json
+import sys
+import tempfile
+import unittest
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT / "scripts"))
+
+from extension_id import (  # noqa: E402
+    derive_extension_id,
+    loaded_extension_id,
+    resolve,
+)
+
+
+class ExtensionIdTests(unittest.TestCase):
+    def test_the_id_is_derived_the_way_chrome_derives_it(self):
+        """Pinned against a real installed extension.
+
+        Chrome hashes the absolute path encoded UTF-16LE, keeps sixteen bytes,
+        and maps each hex digit onto a..p. This pair was read off a working
+        machine: the directory, and the ID Chrome gave it. If this ever breaks,
+        the host will pin an origin Chrome does not use and the side panel will
+        say the companion is unavailable with nothing else wrong.
+        """
+        self.assertEqual(
+            derive_extension_id(
+                Path(r"C:\GptWebCall\extension")
+            ),
+            "ffibgohmjphlbdjfjgddjdfemfemecmm",
+        )
+
+    def test_every_derived_id_is_thirty_two_characters_of_a_to_p(self):
+        for name in ("extension", "Extension Files", "a"):
+            with self.subTest(name=name):
+                value = derive_extension_id(Path("C:/somewhere") / name)
+                self.assertEqual(len(value), 32)
+                self.assertTrue(set(value) <= set("abcdefghijklmnop"), value)
+
+    def test_a_different_directory_gets_a_different_id(self):
+        """Two checkouts are two extensions, which is why the path is the input
+        and why moving a checkout means installing again."""
+        self.assertNotEqual(
+            derive_extension_id(Path("C:/one/extension")),
+            derive_extension_id(Path("C:/two/extension")),
+        )
+
+    def test_chrome_s_own_record_is_read_when_it_exists(self):
+        with tempfile.TemporaryDirectory() as temp:
+            base = Path(temp)
+            extension = base / "checkout" / "extension"
+            extension.mkdir(parents=True)
+            profile = base / "User Data" / "Profile 6"
+            profile.mkdir(parents=True)
+            (profile / "Secure Preferences").write_text(
+                json.dumps(
+                    {
+                        "extensions": {
+                            "settings": {
+                                "unrelatedextensionidentifierxx": {
+                                    "path": str(base / "elsewhere")
+                                },
+                                "aaaabbbbccccddddeeeeffffgggghhhh": {
+                                    "path": str(extension)
+                                },
+                            }
+                        }
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            found = loaded_extension_id(extension, user_data=base / "User Data")
+
+            self.assertEqual(found, "aaaabbbbccccddddeeeeffffgggghhhh")
+
+    def test_an_unreadable_or_absent_profile_is_not_fatal(self):
+        with tempfile.TemporaryDirectory() as temp:
+            base = Path(temp)
+            extension = base / "extension"
+            extension.mkdir()
+            profile = base / "User Data" / "Default"
+            profile.mkdir(parents=True)
+            (profile / "Secure Preferences").write_text("{not json", encoding="utf-8")
+
+            self.assertIsNone(
+                loaded_extension_id(extension, user_data=base / "User Data")
+            )
+            self.assertIsNone(loaded_extension_id(extension, user_data=base / "gone"))
+
+    def test_an_explicit_id_overrides_everything_and_still_reports_the_derivation(self):
+        with tempfile.TemporaryDirectory() as temp:
+            extension = Path(temp) / "extension"
+            extension.mkdir()
+
+            answer = resolve(extension, explicit="p" * 32)
+
+            self.assertEqual(answer["id"], "p" * 32)
+            self.assertEqual(answer["source"], "given")
+            # Reported so a caller can see the two disagree.
+            self.assertEqual(answer["derived"], derive_extension_id(extension))
+
+    def test_the_derivation_is_used_when_chrome_has_never_seen_the_directory(self):
+        """This is what lets the host be registered before anyone opens Chrome,
+        which is what removes the ordering constraint from the install."""
+        with tempfile.TemporaryDirectory() as temp:
+            extension = Path(temp) / "extension"
+            extension.mkdir()
+
+            answer = resolve(extension)
+
+            self.assertEqual(answer["source"], "derived")
+            self.assertEqual(answer["id"], derive_extension_id(extension))
+
+
+class InstallDocumentationTests(unittest.TestCase):
+    def test_one_command_installs_both_halves(self):
+        setup = (ROOT / "scripts" / "setup.py").read_text(encoding="utf-8")
+
+        self.assertIn("install.ps1", setup)
+        self.assertIn("install_skill.py", setup)
+        # Both human steps are named rather than assumed.
+        self.assertIn("chrome://extensions", setup)
+        self.assertIn("Restart Claude Code", setup)
+
+    def test_the_readme_points_a_reader_at_that_one_command(self):
+        readme = (ROOT / "README.md").read_text(encoding="utf-8")
+
+        self.assertIn("python scripts/setup.py", readme)
+        # The ID transcription is gone, and must not creep back.
+        self.assertNotIn("32-character", readme)
+
+    def test_the_installer_no_longer_demands_an_id(self):
+        installer = (ROOT / "scripts" / "install.ps1").read_text(encoding="utf-8")
+
+        self.assertNotIn("Mandatory = $true", installer)
+        self.assertIn("extension_id.py", installer)
+
+    def test_init_installs_without_asking_anyone_to_read_an_id(self):
+        init = (
+            ROOT / "skill" / "webcall" / "skills" / "init" / "SKILL.md"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn("scripts/setup.py", init)
+        self.assertNotIn("read back the 32-character ID", init)
+
+
+if __name__ == "__main__":
+    unittest.main()

@@ -3,27 +3,31 @@
 Register the GPT Web Call native-messaging host for one already-loaded extension.
 
 .DESCRIPTION
-Chrome derives an unpacked extension's ID from where it sits on disk, and the
-host manifest must name that exact ID in allowed_origins with no wildcard. So
-the extension is loaded first, in chrome://extensions, and its ID is passed to
-this script. Running this before loading the extension cannot work: there is no
-ID to pin yet.
+The host manifest must name one exact extension ID in allowed_origins, with no
+wildcard. That ID used to be typed in by hand off chrome://extensions, which
+forced the extension to be loaded first and made a thirty-two character
+transcription part of the install.
+
+Neither is needed. Chrome derives an unpacked extension's ID from where it sits
+on disk, so scripts\extension_id.py works it out: from Chrome's own profile data
+when the extension is already loaded, and from the path itself when it is not.
+Pass -ExtensionId to override both.
 
 Everything is checked before anything is written. A missing prerequisite fails
 here, with the reason, rather than surfacing later as a side panel that says the
 companion is unavailable.
 
 .PARAMETER ExtensionId
-The 32-character ID Chrome shows for the loaded unpacked extension.
+Optional. Overrides the resolved ID; use it only when chrome://extensions
+disagrees with what this script reports.
 
 .PARAMETER WhatIf
 Report what would be done and change nothing.
 #>
 [CmdletBinding()]
 param(
-    [Parameter(Mandatory = $true)]
-    [ValidatePattern('^[a-p]{32}$')]
-    [string]$ExtensionId,
+    [AllowEmptyString()]
+    [string]$ExtensionId = '',
     [switch]$WhatIf
 )
 
@@ -63,6 +67,30 @@ if ([int]$Matches[1] -lt 3 -or ([int]$Matches[1] -eq 3 -and [int]$Matches[2] -lt
     Fail "Python $($Matches[1]).$($Matches[2]) is too old." 'Install Python 3.10 or newer.'
 }
 Write-Output "  Python $($Matches[1]).$($Matches[2]) at $($python.Source)"
+
+# The ID is resolved here, after Python is known to work, because the resolver
+# is Python. Chrome's own profile data wins when the extension is loaded; the
+# path derivation covers the case where it is not, which is what lets the host
+# be registered before anyone has touched chrome://extensions.
+if ($ExtensionId) {
+    if ($ExtensionId -notmatch '^[a-p]{32}$') {
+        Fail "The supplied extension ID is not 32 characters of a-p: $ExtensionId" 'Copy it from chrome://extensions, or omit -ExtensionId and let it be resolved.'
+    }
+    $idSource = 'given on the command line'
+} else {
+    $resolverPath = Join-Path $PSScriptRoot 'extension_id.py'
+    $resolved = (& $python.Source $resolverPath $extensionPath | Out-String) | ConvertFrom-Json
+    if (-not $resolved.id) {
+        Fail 'Could not work out the extension ID.' 'Load the extension in chrome://extensions and pass its ID with -ExtensionId.'
+    }
+    $ExtensionId = $resolved.id
+    $idSource = switch ($resolved.source) {
+        'chrome'  { 'read from Chrome, which has this directory loaded' }
+        'derived' { 'derived from the extension path; Chrome has not loaded it yet' }
+        default   { $resolved.source }
+    }
+}
+Write-Output "  Extension ID $ExtensionId ($idSource)"
 
 $go = Get-Command go -ErrorAction SilentlyContinue
 if (-not $go) {
@@ -119,7 +147,7 @@ if (-not (Test-Path -LiteralPath $written.path -PathType Leaf)) {
     Fail "The rendered manifest points at a host binary that does not exist: $($written.path)" 'Rerun this script.'
 }
 if ($written.allowed_origins.Count -ne 1 -or $written.allowed_origins[0] -ne $expectedOrigin) {
-    Fail "The rendered manifest pins '$($written.allowed_origins -join ', ')' rather than $expectedOrigin." 'Rerun this script with the ID shown in chrome://extensions.'
+    Fail "The rendered manifest pins '$($written.allowed_origins -join ', ')' rather than $expectedOrigin." 'Rerun this script, passing -ExtensionId with the ID shown in chrome://extensions.'
 }
 $registered = (Get-Item -LiteralPath $registryPath).GetValue('')
 if ($registered -ne $manifestPath) {
@@ -154,6 +182,13 @@ if (Test-Path -LiteralPath $preferences -PathType Leaf) {
     }
 }
 Write-Output ''
-Write-Output 'Installed. Reload the extension in chrome://extensions, then open its side panel:'
-Write-Output '  a green dot and the repository name mean the companion answered.'
-Write-Output 'If the panel says the companion is unavailable, reload the extension before reinstalling.'
+Write-Output 'Installed. In chrome://extensions:'
+Write-Output '  - if the extension is not loaded yet: enable Developer mode, Load unpacked,'
+Write-Output "    and pick $extensionPath"
+Write-Output '  - if it is already loaded: reload it'
+Write-Output 'Then open its side panel: a green dot and the repository name mean the'
+Write-Output 'companion answered.'
+Write-Output ''
+Write-Output "Chrome should show the ID $ExtensionId. If it shows a different one, rerun"
+Write-Output 'this script with -ExtensionId and that value.'
+Write-Output 'If the panel says the companion is unavailable, reload the extension first.'

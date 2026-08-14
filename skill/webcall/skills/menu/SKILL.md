@@ -35,8 +35,11 @@ belonged to is gone and the file can be deleted. With `smoke`, run
 
 If the panel reports the companion unavailable, the first remedy is the panel's
 own **Reload extension** button, or a reload in `chrome://extensions` — a stale
-service worker is the common cause. Reinstalling is the second remedy, not the
-first, and it needs the extension ID again.
+service worker is the common cause. If that does not fix it, check the pinned
+origin: `python scripts/extension_id.py` reports the ID Chrome has for this
+checkout, and it must match `allowed_origins` in
+`native-host\com.sina.gptwebcall.json`. Reinstalling with `python
+scripts/setup.py` is the last remedy, not the first.
 
 ### `finish <id>`
 Prefer the side panel's **Done and validate** once the expected files have
