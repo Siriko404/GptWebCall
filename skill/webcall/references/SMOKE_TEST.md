@@ -15,9 +15,9 @@ work. That is an owner requirement, not a preference.
 2. Write `smoke_source.txt` containing the token and two randomly generated short
    key/value facts. Compute its exact byte size and SHA-256 locally, now.
 3. Derive a request ID and a pass prefix from the token, e.g.
-   `webcall-smoke-<short-token>-v1`. Deliverables are `<pass>_response.json` and
-   `<pass>_outputs.zip`. Unique names are mandatory: filename is the only routing
-   key.
+   `webcall-smoke-<short-token>-v1`. One file comes back, `<pass>_outputs.zip`,
+   with `<pass>_response.json` inside it. Unique names are mandatory: filename
+   is the only routing key.
 4. Write a fresh `WEB_REVIEW_REQUEST.json` asking the responder to read the
    supplied source, report the token and both facts, reproduce the source's
    SHA-256, and create `smoke_receipt.txt` holding those values. Forbid outside
@@ -29,9 +29,10 @@ work. That is an owner requirement, not a preference.
 6. Write a fresh preparation spec: `input_files` = the request JSON, the schema
    JSON, and `smoke_source.txt`; `expected_main_json` = the unique response name;
    `expected_artifacts` = the unique outputs ZIP.
-7. `prompt_text` must name exactly those two downloads, put every other file
-   inside the ZIP, require sizes and digests computed from the bytes actually
-   written, and forbid conversational text outside the downloads.
+7. `prompt_text` must say the reply is exactly one downloadable `.zip`, name it,
+   name the main JSON that goes inside it, put every other created file in there
+   too, require sizes and digests computed from the bytes actually written, and
+   forbid conversational text outside the download.
 
 ## 2. Prepare and inspect
 
@@ -48,9 +49,9 @@ the pre-send check — not `validate`.
 ## 3. Operator round trip
 
 Ask the operator: side panel → destination set to **Send in a new
-conversation** → **Go** → ChatGPT's **Attach files** → **Send** → download both
-named files → **Done and validate**. The extension attaches and types the launch
-line; it never sends.
+conversation** → **Go** → ChatGPT's **Attach files** → **Send** → download the
+one named archive → **Done and validate**. The extension attaches and types the
+launch line; it never sends.
 
 Watch the composer at Go. One line naming the archive and `000_READ_ME_FIRST.md`
 should appear in it by itself. If the panel shows that line with a copy button
@@ -91,11 +92,16 @@ Pass only if all of these hold:
 - the response and `smoke_receipt.txt` carry the fresh token, both fresh facts,
   and the SHA-256 you computed locally;
 - the outputs ZIP exists under its expected name and its declared member sizes
-  and digests verify.
+  and digests verify;
+- the main JSON is in `response\` beside the archive, lifted out of it by the
+  companion rather than downloaded.
 
-If the files reached the Downloads folder but never reached the exchange, the
+If the archive reached the Downloads folder but never reached the exchange, the
 smoke test has failed even if a later manual `done` or `validate` rescues it.
-Record that, and say so plainly.
+Record that, and say so plainly. That exact failure — files written by Chrome,
+nothing filed, and `validate` clicked by hand to rescue it — happened three
+times before the download handling was rebuilt around a single event, so it is
+the thing this step is watching for.
 
 ## 5. What this test gives up
 

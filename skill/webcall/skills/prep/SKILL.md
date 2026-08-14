@@ -57,25 +57,27 @@ model that has already been argued with.
    `WEB_REVIEW_REQUEST.json` and `WEB_RESPONSE_SCHEMA.json`; then only the
    regular files needed to answer. Never a directory, never credentials or
    tokens, never anything from `calls/` or `state/`.
-5. **Pick a stable `request_id` and a short pass token.** Deliverables are
-   `<pass>_response.json` and, when extra files are needed,
-   `<pass>_outputs.zip`. Check `active` and `list`; `prepare` enforces the
-   reservation and will name the call already holding a taken name.
+5. **Pick a stable `request_id` and a short pass token.** One file comes back:
+   `<pass>_outputs.zip`, with `<pass>_response.json` inside it. Both names are
+   reserved; only the archive is ever matched against a download. Check `active`
+   and `list`; `prepare` enforces the reservation and will name the call already
+   holding a taken name.
 6. **Write the request and the schema.** The request carries persona, objective,
    authority hierarchy, scope, questions, acceptance criteria, and a stop
    condition. Pin the schema fully — a bare `"artifacts_manifest": {"type":
    "array"}` invites the model to invent keys and produces a false `INCOMPLETE`
    on correct work. Tell it in one line to reproduce the field names verbatim.
-7. **Get the two lists right.** `delivery` names only the downloadable files.
-   `artifacts_manifest` names every created additional file, archive members
-   included, each with exact size and SHA-256 — and never the main JSON, which
-   the parser rejects as self-listing. Members that must be hash-verified need
-   unique plain basenames with no path separators.
-8. **Write the spec.** Non-empty `input_files`, the expected main JSON,
-   optionally one outputs ZIP, and `prompt_text` that says the one attached
-   archive is the whole package, requires it to be extracted, and — when
-   thoroughness is the point — requires a file-by-file inventory with byte sizes
-   before any analysis.
+7. **Get the two lists right.** `delivery` names the one downloadable file, the
+   outputs archive. `artifacts_manifest` names every created additional file,
+   archive members included, each with exact size and SHA-256 — and never the
+   main JSON, which the parser rejects as self-listing. Members that must be
+   hash-verified need unique plain basenames with no path separators.
+8. **Write the spec.** Non-empty `input_files`, the expected main JSON, the one
+   required outputs ZIP, and `prompt_text` that says the one attached archive is
+   the whole package, requires it to be extracted, states that the reply is
+   exactly one `.zip` with the main JSON inside it, and — when thoroughness is
+   the point — requires a file-by-file inventory with byte sizes before any
+   analysis.
 
    **One zip goes up and nothing else.** ChatGPT refuses loose `.md`
    attachments, so the companion packs your `prompt_text` into the archive as

@@ -53,6 +53,7 @@ class ReservationTests(unittest.TestCase):
             "subject": subject,
             "request_id": request_id,
             "expected_main_json": main,
+            "expected_artifacts": [f"{Path(main).stem}_outputs.zip"],
             "prompt_text": "Return files only.\n",
             "input_files": [
                 {"path": str(request), "filename": "WEB_REVIEW_REQUEST.json"},
@@ -213,85 +214,37 @@ class ReservationTests(unittest.TestCase):
             (self.root / "calls" / prepared["exchange_id"] / "response" / "rogue.md").exists()
         )
 
-    def test_a_call_that_reserved_nothing_still_accepts_what_it_declares(self):
-        """expected_artifacts is optional, and calls prepared without it must keep
-        working: with no reservation the main JSON remains the only authority."""
+    def test_a_download_the_call_never_reserved_is_ignored_not_pooled(self):
+        """Every call reserves exactly one archive, so anything else is
+        unattributable and is said to be, immediately.
+
+        This replaces two tests of machinery that no longer exists. A call with
+        no reservation could once let the responder decide what the exchange
+        would accept, and a download that matched nothing yet waited in a shared
+        pending pool. The pool is the reason three separate calls ended with
+        their files sitting in the Downloads folder while the panel showed
+        nothing wrong: an entry parked there was invisible until validation
+        later reported the file missing.
+        """
         prepared = prepare_call(
-            self.root, self.spec("open", "request_open", "open.json"), WHEN
+            self.root,
+            self.artifact_spec(
+                "guarded2", "request_guarded2", "guard2.json", ["guard2_outputs.zip"]
+            ),
+            WHEN,
         )
         core.start_call(self.root, prepared["exchange_id"], 4, [])
-        body = b"declared\n"
-        self.deliver_main(
-            prepared["exchange_id"],
-            "request_open",
-            "open.json",
-            [
-                {
-                    "filename": "extra.md",
-                    "status": "CREATED",
-                    "media_type": "text/markdown",
-                    "size": len(body),
-                    "sha256": hashlib.sha256(body).hexdigest(),
-                }
-            ],
-        )
         stray = Path(self.temp.name) / "extra.md"
-        stray.write_bytes(body)
+        stray.write_bytes(b"declared\n")
 
         result = handle_completed_download(
             self.root, {"id": 6, "filename": str(stray), "state": "complete"}
         )
 
-        self.assertEqual(result["status"], "MOVED")
-
-    def test_the_pending_pool_drops_what_it_can_never_release(self):
-        """Unclaimed downloads accumulated for the life of the installation.
-
-        An artifact downloaded before any main JSON waits in a shared pool until
-        some call names it. Nothing removed an entry that was never named, so one
-        real installation held 71, the oldest eighteen days old.
-        """
-        prepared = prepare_call(
-            self.root, self.spec("pool", "request_pool", "pool.json"), WHEN
-        )
-        core.start_call(self.root, prepared["exchange_id"], 8, [])
-        alive = Path(self.temp.name) / "recent.md"
-        alive.write_bytes(b"recent\n")
-        stale = Path(self.temp.name) / "stale.md"
-        stale.write_bytes(b"stale\n")
-        now = datetime.now(timezone.utc)
-        (self.root / "state" / "PENDING_DOWNLOADS.json").write_text(
-            json.dumps(
-                {
-                    "downloads": [
-                        {"id": 1, "filename": str(alive), "held_at": now.isoformat()},
-                        {
-                            "id": 2,
-                            "filename": str(stale),
-                            "held_at": (now - timedelta(days=30)).isoformat(),
-                        },
-                        {"id": 3, "filename": str(Path(self.temp.name) / "gone.md")},
-                        {"id": 4, "filename": str(alive)},
-                    ]
-                }
-            )
-            + "\n",
-            encoding="utf-8",
-        )
-        fresh = Path(self.temp.name) / "fresh.md"
-        fresh.write_bytes(b"fresh\n")
-
-        downloads._hold_pending(self.root, 9, fresh)
-
-        held = json.loads(
-            (self.root / "state" / "PENDING_DOWNLOADS.json").read_text(encoding="utf-8")
-        )["downloads"]
-        self.assertEqual(
-            sorted(item["id"] for item in held),
-            [1, 9],
-            "kept: the recent entry and the new one. Dropped: expired, vanished, "
-            "and the untimestamped entry that predates the field.",
-        )
+        self.assertEqual(result["status"], "IGNORED")
+        self.assertIn("extra.md", result["reason"])
+        self.assertTrue(stray.is_file(), "an unreserved download stays where Chrome put it")
+        self.assertFalse((self.root / "state" / "PENDING_DOWNLOADS.json").exists())
 
     def test_repair_still_works_when_no_other_call_wants_the_names(self):
         first = prepare_call(

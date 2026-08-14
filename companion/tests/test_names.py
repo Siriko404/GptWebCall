@@ -37,6 +37,7 @@ class DeliverableNameTests(unittest.TestCase):
             "subject": subject,
             "request_id": "fixture",
             "expected_main_json": main,
+            "expected_artifacts": [f"{Path(main).stem}_outputs.zip"],
             "prompt_text": "Return files only.\n",
             "input_files": [
                 {"path": str(self.request), "filename": "WEB_REVIEW_REQUEST.json"},
@@ -81,7 +82,7 @@ class DeliverableNameTests(unittest.TestCase):
         """
         prepare_call(self.root, self.spec("First", "shared.json"), self.now)
 
-        with self.assertRaisesRegex(ValueError, "single .zip"):
+        with self.assertRaisesRegex(ValueError, "exactly one .zip"):
             prepare_call(
                 self.root,
                 self.spec("Second", "second.json", ["shared.json"]),

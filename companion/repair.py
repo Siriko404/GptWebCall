@@ -102,8 +102,13 @@ def collect_defects(exchange_dir: Path) -> list[dict[str, Any]]:
             )
         )
 
+    expected_downloads = tuple(
+        str(name) for name in manifest.get("expected_artifacts", [])
+    )
     defects.extend(_artifact_defects(raw, response_dir, expected_main))
-    defects.extend(_delivery_defects(raw, expected_main, response_dir))
+    defects.extend(
+        _delivery_defects(raw, expected_main, response_dir, expected_downloads)
+    )
     defects.extend(_undeclared_expected_defects(raw, manifest, response_dir))
     return defects
 
@@ -462,7 +467,10 @@ def _undeclared_expected_defects(
 
 
 def _delivery_defects(
-    raw: dict[str, Any], expected_main: str, response_dir: Path
+    raw: dict[str, Any],
+    expected_main: str,
+    response_dir: Path,
+    expected_downloads: tuple[str, ...] = (),
 ) -> list[dict[str, Any]]:
     delivery = raw.get("delivery")
     if not isinstance(delivery, list) or any(
@@ -477,12 +485,16 @@ def _delivery_defects(
             )
         ]
 
-    # `delivery` names what came down as downloads. A created artifact that lives
-    # inside the outputs archive was never separately downloadable, so requiring
-    # it here reported a correct two-file delivery as incomplete. Only artifacts
-    # that arrived as their own file belong in the requirement.
+    # `delivery` names what came down as downloads, which is one archive with
+    # the main JSON inside it. A created artifact that lives inside that archive
+    # was never separately downloadable, so requiring it here reported a correct
+    # delivery as incomplete. Only files that arrived on their own belong in the
+    # requirement, and the main JSON no longer does — naming it stays acceptable
+    # because it is the response and older exchanges did download it.
     delivered = {item.casefold() for item in delivery}
-    required = {expected_main.casefold()}
+    required: set[str] = set()
+    if not delivered & ({expected_main.casefold()} | {name.casefold() for name in expected_downloads}):
+        required.add(expected_main.casefold())
     artifacts = raw.get("artifacts_manifest")
     if isinstance(artifacts, list):
         for artifact in artifacts:
@@ -500,7 +512,8 @@ def _delivery_defects(
         _defect(
             "DELIVERY_INCOMPLETE",
             expected_main,
-            "delivery to name the main JSON and every created artifact",
+            "delivery to name the outputs archive and every separately "
+            "downloaded file",
             "delivery omits " + ", ".join(absent),
         )
     ]

@@ -4,6 +4,7 @@ import os
 import subprocess
 import tempfile
 import unittest
+import zipfile
 from pathlib import Path
 
 from companion.cli import run
@@ -11,6 +12,11 @@ from companion.core import start_call
 
 
 class CLITests(unittest.TestCase):
+    def write_archive(self, path):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with zipfile.ZipFile(path, "w") as bundle:
+            bundle.writestr("notes.md", "notes\n")
+
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         base = Path(self.temp.name)
@@ -28,6 +34,7 @@ class CLITests(unittest.TestCase):
                     "subject": "CLI fixture",
                     "request_id": "request_cli",
                     "expected_main_json": "cli_result.json",
+                    "expected_artifacts": ["cli_outputs.zip"],
                     "prompt_text": "Return files only.",
                     "created_at": "2026-07-14T15:45:00-04:00",
                     "input_files": [
@@ -89,12 +96,15 @@ class CLITests(unittest.TestCase):
                     "request_id": "request_cli",
                     "status": "COMPLETE",
                     "artifacts_manifest": [],
-                    "delivery": ["cli_result.json"],
+                    "delivery": ["cli_outputs.zip"],
                 }
             )
             + "\n",
             encoding="utf-8",
         )
+        # One archive comes back, so a hand-collected response has to include it
+        # as well as the main JSON the operator lifted out of it.
+        self.write_archive(response.parent / "cli_outputs.zip")
 
         code, output, error = self.invoke("validate", "--exchange", exchange_id)
 
@@ -176,12 +186,15 @@ class CLITests(unittest.TestCase):
                     "request_id": "request_cli",
                     "status": "COMPLETE",
                     "artifacts_manifest": [],
-                    "delivery": ["cli_result.json"],
+                    "delivery": ["cli_outputs.zip"],
                 }
             )
             + "\n",
             encoding="utf-8",
         )
+        # One archive comes back, so a hand-collected response has to include it
+        # as well as the main JSON the operator lifted out of it.
+        self.write_archive(response.parent / "cli_outputs.zip")
 
         empty = Path(self.temp.name) / "empty-downloads"
         empty.mkdir()
@@ -212,7 +225,9 @@ class CLITests(unittest.TestCase):
         deleted = json.loads(output)["result"]
         self.assertTrue(deleted["deleted"])
         self.assertEqual(deleted["state_before_delete"], "PREPARED")
-        self.assertEqual(deleted["freed_deliverable_names"], ["cli_result.json"])
+        self.assertEqual(
+            deleted["freed_deliverable_names"], ["cli_result.json", "cli_outputs.zip"]
+        )
         self.assertFalse((self.root / "calls" / exchange_id).exists())
 
         # Freeing the name is the point: the same deliverable can now be claimed.

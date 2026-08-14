@@ -76,9 +76,9 @@ Constraints imposed by the owner or by the environment are not bias — state th
 
 ---
 
-## One zip up, at most two files down
+## One zip up, one zip down
 
-**Every exchange is exactly one file up and at most two back. This is not a style preference; it is enforced at preparation and it changes how you write a spec.**
+**Every exchange is exactly one file up and exactly one file back. This is not a style preference; it is enforced at preparation and it changes how you write a spec.**
 
 Up:
 
@@ -92,10 +92,15 @@ Down:
 
 | File | What it is |
 |---|---|
-| `<pass>_response.json` | The main response, exactly as before. |
-| `<pass>_outputs.zip` | Every other returned file, inside one archive. |
+| `<pass>_outputs.zip` | Everything the call returns, including the main response as `<pass>_response.json` at the archive root. |
 
-`expected_artifacts` is therefore either empty, when the call returns nothing but the main JSON, or a single `.zip`. `prepare` refuses anything else. Two artifacts, or one artifact that is not an archive, is an error at preparation rather than a surprise at download.
+`expected_artifacts` is therefore exactly one `.zip`, never empty and never more. `prepare` refuses anything else, so two artifacts or one that is not an archive is an error at preparation rather than a surprise at download.
+
+`expected_main_json` still names the main response. It is now the name of a **member** of that archive rather than a download of its own, and the companion writes it out beside the archive when the archive lands. Everything downstream — validation, `defects`, a repair round — reads it from `response\` exactly as before and knows nothing about where it travelled.
+
+**Why one file back and not two.** A response used to arrive as several downloads in an order nobody controlled, so the companion needed a pool to hold whatever arrived before the main JSON could explain it. A download parked in that pool was invisible: three separate calls ended with files sitting in the Downloads folder, the panel showing nothing wrong, and validation later reporting them missing. One file cannot arrive out of order with itself. The pool is gone, and a download that matches no active call is now reported as ignored the moment it lands.
+
+**Say it in the prompt.** The companion cannot make ChatGPT return one archive; only the prompt can. Every prompt must state that the reply is exactly one downloadable `.zip`, name it, name the main JSON inside it, and say that every other created file goes in there too.
 
 ### The prompt inside the archive
 
@@ -115,7 +120,7 @@ If typing fails — the page has not finished loading, or the composer moved —
 
 The archive is byte-identical for identical inputs. Zip entries normally carry a modification time, which would make the digest change on every preparation and defeat verifying the archive against its own manifest record, so entry timestamps and ordering are fixed.
 
-**Say the rule in the prompt as well.** The companion cannot make ChatGPT return one archive; only the prompt can. Every prompt must state that the reply is exactly two downloadable files, name them, and say that every additional file goes inside the archive rather than beside it.
+**Say the rule in the prompt as well.** The companion cannot make ChatGPT return one archive; only the prompt can. Every prompt must state that the reply is exactly one downloadable `.zip`, name it, name the main JSON inside it, and say that every other created file goes in there too.
 
 **One thing this rule costs you.** Natively attached files are read directly. An archive has to be extracted with the code tool first, and a model that extracts carelessly can skim rather than read. For any call where thoroughness is the point, make the prompt require an inventory: unzip, list every extracted file with its byte size, and echo that list before answering. A shallow read then shows up in the reply instead of hiding in it.
 
@@ -148,9 +153,9 @@ Keep the two lists distinct:
 | List | Contains |
 |---|---|
 | `artifacts_manifest` | every created file, including archive members, each with its own hash |
-| `delivery` | only what was downloadable: the main JSON and the outputs archive |
+| `delivery` | only what was downloadable: the outputs archive |
 
-Filename routing reads neither of these for the archive's members; only the two downloadable names are ever matched against a download.
+Filename routing reads neither of these for the archive's members; the archive's own name is the only thing ever matched against a download.
 
 ## Filenames are the routing key
 
@@ -182,7 +187,7 @@ This is enforced, not merely requested. `prepare` refuses a spec whose `expected
 }
 ```
 
-Declaring it buys three things: the collision is caught when you author the spec rather than mid-run, a promised archive that the main JSON silently drops is reported as missing instead of validating as complete, and the failure names the file rather than describing a symptom. Because artifacts are one archive, an exchange now exposes exactly two names to download routing.
+Declaring it buys three things: the collision is caught when you author the spec rather than mid-run, a promised archive that the main JSON silently drops is reported as missing instead of validating as complete, and the failure names the file rather than describing a symptom. Because everything comes back inside one archive, an exchange exposes exactly one name to download routing.
 
 **How to name files so collisions cannot happen.** Prefix every deliverable with the call's own short pass name, the same token used in the subject and request ID. `numbers_response.json`, `numbers_outputs.zip`. Never `result.json`, `response.json`, `report.md`, `findings.md`, or `output.json`; generic names are exactly the ones two calls will pick independently.
 
@@ -236,7 +241,7 @@ When to choose which responder:
 Workflow:
 
 1. `prepare` the exchange exactly as for a Web call. Names are reserved; the request snapshot under `request\` is the provenance record. Do NOT arm the call (no Go, no tab binding); it stays `PREPARED`.
-2. Spawn the subagent (background) with instructions to: read every file in the exchange's `request\` directory (the loose snapshot files, not the archive); perform the assignment per `WEB_REVIEW_REQUEST.json` and `WEB_RESPONSE_SCHEMA.json`; write the expected main JSON and the single outputs archive — exact expected filenames — into the exchange's `response\` directory; compute real byte sizes and SHA-256 hashes for every artifact and record them in `artifacts_manifest` using the schema's field names verbatim; report PARTIAL or BLOCKED honestly rather than inventing content.
+2. Spawn the subagent (background) with instructions to: read every file in the exchange's `request\` directory (the loose snapshot files, not the archive); perform the assignment per `WEB_REVIEW_REQUEST.json` and `WEB_RESPONSE_SCHEMA.json`; write the expected main JSON and the single outputs archive — exact expected filenames — into the exchange's `response\` directory (the local responder writes both directly, since nothing is downloaded); compute real byte sizes and SHA-256 hashes for every artifact and record them in `artifacts_manifest` using the schema's field names verbatim; report PARTIAL or BLOCKED honestly rather than inventing content.
 3. Run `validate --exchange <exchange_id>` (works on a PREPARED exchange with manually placed files). Deterministic validation is unchanged: hashes, sizes, request ID binding, artifact accounting.
 4. Semantic acceptance is unchanged and remains the orchestrating session's job. Subagent output is advisory exactly as Web output is.
 5. Correction rounds: the extension repair flow does not apply. Diagnose with `defects --exchange`, then either continue the same subagent (send it the defect list) for mechanical delivery defects, or spawn a fresh subagent — new request ID, original exchange preserved — when the reasoning itself must be redone.
@@ -375,7 +380,7 @@ Before telling the operator to click Go, verify the manifest lists exactly the i
 3. The extension waits. The operator clicks ChatGPT's real **Attach files** control.
 4. The extension assigns exactly the manifest-approved request files to that chooser and detaches its debugger immediately.
 5. The operator reviews the filenames and clicks ChatGPT's native **Send**.
-6. ChatGPT returns only downloadable files: the main JSON and any additional artifacts.
+6. ChatGPT returns one downloadable file: the outputs archive, with the main JSON and every other created file inside it.
 7. The operator manually downloads every output. Files may be downloaded in any order. Artifacts downloaded before the main JSON remain pending until the main JSON identifies them.
 8. The operator clicks **Done and validate**. Monitoring stops first; the companion validates and writes `validation\VALIDATION_REPORT.json`.
 9. The operating session reads the main response, validation report, and artifacts; it then performs semantic acceptance.
@@ -425,7 +430,7 @@ Rules:
 - Every additional file is listed once in `artifacts_manifest`, whether it came down as its own download or travels inside the outputs archive. Listing the archive's members is encouraged: a member's declared SHA-256 is the only way a truncated or corrupted file inside the archive can be detected.
 - Artifact status is `CREATED`, `MISSING`, or `NOT_CREATED`.
 - Every `CREATED` artifact supplies exact filename, media type, byte size, and SHA-256.
-- `delivery` names only what came down as downloads: the expected main JSON and the outputs archive. It does not repeat the archive's members, which were never separately downloadable.
+- `delivery` names only what came down as a download: the outputs archive. It does not repeat the archive's members, which were never separately downloadable, and naming the main JSON as well is accepted rather than required.
 - A `PARTIAL` or `BLOCKED` response delivered intact is `status: COMPLETE` with `response_status` recording what the responder said. See "Delivery integrity is not work completeness".
 - ChatGPT should emit no conversational acknowledgment, summary, markdown block, or pasted JSON outside the downloadable files.
 

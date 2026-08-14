@@ -190,13 +190,14 @@ def _expected_artifact_names(spec: dict[str, Any]) -> list[str]:
             raise ValueError(f"duplicate expected artifact: {name}")
         seen.add(name.casefold())
         names.append(name)
-    # A call may return no artifacts at all. If it returns any, they travel as
-    # exactly one archive, so the whole exchange is two files in each direction
-    # and only two filenames are ever exposed to download routing.
-    if names and (len(names) != 1 or Path(names[0]).suffix.casefold() != ".zip"):
+    # One archive comes back and everything is inside it, the main JSON
+    # included. One name is therefore the only thing download routing ever has
+    # to attribute, and a call cannot half-arrive: either the archive is there
+    # or nothing is.
+    if len(names) != 1 or Path(names[0]).suffix.casefold() != ".zip":
         raise ValueError(
-            "expected_artifacts must be either empty or a single .zip; "
-            "every returned file goes inside that one archive"
+            "expected_artifacts must be exactly one .zip; the main JSON and "
+            "every returned file come back inside that one archive"
         )
     return names
 

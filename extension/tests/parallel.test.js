@@ -3,7 +3,6 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 import {
-  anyCompletedTrackedDownload,
   anyShouldObserveDownload,
   handoffForTab,
 } from "../lib/downloads.js";
@@ -63,23 +62,19 @@ test("a download predating every call is not observed", () => {
 });
 
 
-test("completion is submitted while any call is still monitoring", () => {
+test("a download is submitted while any call is still monitoring", () => {
+  const item = { id: 9, startTime: "2026-07-21T09:02:00.000Z" };
   const stopped = {
     [numbers.exchangeId]: { ...numbers, monitoring: false },
     [claims.exchangeId]: claims,
   };
-  assert.equal(
-    anyCompletedTrackedDownload(stopped, [9], { id: 9, state: { current: "complete" } }),
-    true,
-  );
+  assert.equal(anyShouldObserveDownload(stopped, item), true);
+
   const allStopped = {
     [numbers.exchangeId]: { ...numbers, monitoring: false },
     [claims.exchangeId]: { ...claims, monitoring: false },
   };
-  assert.equal(
-    anyCompletedTrackedDownload(allStopped, [9], { id: 9, state: { current: "complete" } }),
-    false,
-  );
+  assert.equal(anyShouldObserveDownload(allStopped, item), false);
 });
 
 

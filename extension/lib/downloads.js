@@ -28,16 +28,6 @@ export function shouldObserveDownload(active, downloadItem) {
   return !baseline.has(downloadItem.id) && !observed.has(downloadItem.id);
 }
 
-export function completedTrackedDownload(active, trackedIds, delta) {
-  return Boolean(
-    active?.monitoring
-      && validDownloadId(delta?.id)
-      && Array.isArray(trackedIds)
-      && trackedIds.includes(delta.id)
-      && delta.state?.current === "complete",
-  );
-}
-
 function handoffList(handoffs) {
   if (Array.isArray(handoffs)) {
     return handoffs;
@@ -53,27 +43,6 @@ export function anyShouldObserveDownload(handoffs, downloadItem) {
   return handoffList(handoffs).some((one) => shouldObserveDownload(one, downloadItem));
 }
 
-export function anyCompletedTrackedDownload(handoffs, trackedIds, delta) {
-  return handoffList(handoffs).some(
-    (one) => completedTrackedDownload(one, trackedIds, delta),
-  );
-}
-
 export function handoffForTab(handoffs, tabId) {
   return handoffList(handoffs).find((one) => one?.tabId === tabId) ?? null;
-}
-
-export function claimCompletedDownload(tracker, downloadId) {
-  if (
-    !tracker
-    || !validDownloadId(downloadId)
-    || !Array.isArray(tracker.ids)
-    || !Array.isArray(tracker.processing)
-    || !tracker.ids.includes(downloadId)
-    || tracker.processing.includes(downloadId)
-  ) {
-    return false;
-  }
-  tracker.processing.push(downloadId);
-  return true;
 }

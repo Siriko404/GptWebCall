@@ -27,9 +27,10 @@ Check, in order: the four root files exist; the wrapper runs (`active` and
 `list` both return `ok: true`); the `HKCU` registry value points at a host
 manifest that exists and pins one extension origin; the side panel shows its
 green dot. **There is no `gptwebcall.cmd health`** — `health` is a native-host
-message the extension sends. Also report anything stale: entries in
-`state/PENDING_DOWNLOADS.json` whose files no longer exist, and records in
-`state/active/` with no matching `ACTIVE` manifest. With `smoke`, run
+message the extension sends. Also report anything stale: records in
+`state/active/` with no matching `ACTIVE` manifest, and a leftover
+`state/PENDING_DOWNLOADS.json`, which nothing writes any more — the pool it
+belonged to is gone and the file can be deleted. With `smoke`, run
 [SMOKE_TEST](../../references/SMOKE_TEST.md).
 
 If the panel reports the companion unavailable, the first remedy is the panel's

@@ -1,7 +1,9 @@
 import hashlib
+import io
 import json
 import tempfile
 import unittest
+import zipfile
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -27,6 +29,7 @@ class RepairTests(unittest.TestCase):
             "subject": "Fixture call",
             "request_id": "request_fixture",
             "expected_main_json": "result.json",
+            "expected_artifacts": ["fixture_outputs.zip"],
             "prompt_text": "Return files only.\n",
             "input_files": [
                 {"path": str(request), "filename": request.name},
@@ -66,7 +69,7 @@ class RepairTests(unittest.TestCase):
         limitations=None,
     ):
         manifest = []
-        names = ["result.json"]
+        names = ["fixture_outputs.zip"]
         if artifacts:
             manifest.append(
                 {
@@ -91,9 +94,21 @@ class RepairTests(unittest.TestCase):
     def completed(self, download_id, path):
         return {"id": download_id, "filename": str(path), "state": "complete"}
 
+    def deliver(self, download_id=3, *, main=None, report=None, name="fixture_outputs.zip"):
+        """Deliver the one archive a call comes back as."""
+        buffer = io.BytesIO()
+        with zipfile.ZipFile(buffer, "w") as bundle:
+            bundle.writestr(
+                "result.json", main if main is not None else self.main_json_bytes()
+            )
+            if report is not None:
+                bundle.writestr("report.md", report)
+        archive = self.download(name, buffer.getvalue())
+        return handle_completed_download(self.root, self.completed(download_id, archive))
+
     def deliver_main_only(self):
-        main = self.download("result.json", self.main_json_bytes())
-        handle_completed_download(self.root, self.completed(3, main))
+        """The archive arrives, but the member it promised is not inside it."""
+        self.deliver()
 
     def test_missing_artifact_is_reported_with_its_name(self):
         self.deliver_main_only()
@@ -115,11 +130,10 @@ class RepairTests(unittest.TestCase):
 
     def test_hash_mismatch_reports_declared_and_actual_digests(self):
         wrong_digest = hashlib.sha256(b"different").hexdigest()
-        main = self.download(
-            "result.json", self.main_json_bytes(artifact_digest=wrong_digest)
+        self.deliver(
+            main=self.main_json_bytes(artifact_digest=wrong_digest),
+            report=self.report_bytes,
         )
-        handle_completed_download(self.root, self.completed(3, main))
-        (self.exchange / "response" / "report.md").write_bytes(self.report_bytes)
         finish_call(self.root)
 
         defects = collect_defects(self.exchange)
@@ -142,13 +156,11 @@ class RepairTests(unittest.TestCase):
         itself is inadequate the remedy is a new correction call with a new
         request ID, not a repair round.
         """
-        main = self.download(
-            "result.json",
-            self.main_json_bytes(
+        self.deliver(
+            main=self.main_json_bytes(
                 status="PARTIAL", artifacts=False, limitations=["ran out of context"]
-            ),
+            )
         )
-        handle_completed_download(self.root, self.completed(3, main))
         report = finish_call(self.root)
 
         self.assertEqual(report["status"], "COMPLETE")
@@ -156,12 +168,21 @@ class RepairTests(unittest.TestCase):
         self.assertEqual(collect_defects(self.exchange), [])
 
     def test_delivery_omission_is_reported(self):
+        """A file that came down on its own must be named in delivery.
+
+        The archive's members must not be: they were never downloadable. This
+        fixture places report.md in the response directory as its own file, so
+        it is one of the few things delivery is still required to name.
+        """
         # The strict move gate refuses this main JSON, so it only reaches the
         # response directory through the manual fallback path.
         (self.exchange / "response" / "result.json").write_bytes(
-            self.main_json_bytes(delivery=["result.json"])
+            self.main_json_bytes(delivery=["fixture_outputs.zip"])
         )
         (self.exchange / "response" / "report.md").write_bytes(self.report_bytes)
+        (self.exchange / "response" / "fixture_outputs.zip").write_bytes(
+            self._empty_zip()
+        )
         finish_call(self.root)
 
         defects = collect_defects(self.exchange)
@@ -169,11 +190,14 @@ class RepairTests(unittest.TestCase):
         self.assertEqual([defect["kind"] for defect in defects], ["DELIVERY_INCOMPLETE"])
         self.assertIn("report.md", defects[0]["observed"])
 
+    def _empty_zip(self):
+        buffer = io.BytesIO()
+        with zipfile.ZipFile(buffer, "w") as bundle:
+            bundle.writestr("placeholder.txt", "x")
+        return buffer.getvalue()
+
     def test_complete_delivery_has_no_defects(self):
-        main = self.download("result.json", self.main_json_bytes())
-        artifact = self.download("report.md", self.report_bytes)
-        handle_completed_download(self.root, self.completed(3, main))
-        handle_completed_download(self.root, self.completed(4, artifact))
+        self.deliver(report=self.report_bytes)
         report = finish_call(self.root)
 
         self.assertEqual(report["status"], "COMPLETE")
@@ -247,17 +271,15 @@ class RepairTests(unittest.TestCase):
 
     def test_repair_round_supersedes_the_earlier_main_json(self):
         wrong_digest = hashlib.sha256(b"different").hexdigest()
-        first = self.download(
-            "result.json", self.main_json_bytes(artifact_digest=wrong_digest)
+        self.deliver(
+            main=self.main_json_bytes(artifact_digest=wrong_digest),
+            report=self.report_bytes,
         )
-        handle_completed_download(self.root, self.completed(3, first))
-        (self.exchange / "response" / "report.md").write_bytes(self.report_bytes)
         finish_call(self.root)
         original = (self.exchange / "response" / "result.json").read_bytes()
 
         open_repair_round(self.root, self.exchange_id, tab_id=42, download_baseline=[])
-        corrected = self.download("result.json", self.main_json_bytes())
-        result = handle_completed_download(self.root, self.completed(9, corrected))
+        result = self.deliver(9, report=self.report_bytes)
 
         self.assertEqual(result["status"], "MOVED")
         self.assertEqual(
@@ -269,10 +291,7 @@ class RepairTests(unittest.TestCase):
         self.assertEqual(finish_call(self.root)["status"], "COMPLETE")
 
     def test_repair_is_refused_when_nothing_is_wrong(self):
-        main = self.download("result.json", self.main_json_bytes())
-        artifact = self.download("report.md", self.report_bytes)
-        handle_completed_download(self.root, self.completed(3, main))
-        handle_completed_download(self.root, self.completed(4, artifact))
+        self.deliver(report=self.report_bytes)
         finish_call(self.root)
 
         with self.assertRaisesRegex(RuntimeError, "no validation defects"):

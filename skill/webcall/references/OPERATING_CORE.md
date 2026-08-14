@@ -95,21 +95,24 @@ made is a hypothesis to test, not a premise to confirm.
    loose `.md` attachments, so the prompt travels inside the archive as
    `000_READ_ME_FIRST.md` — first in it, because the bundle is written in
    casefolded name order. Nothing else is uploaded, and there is no flag to
-   turn this off. `expected_artifacts` is optional; when present it is exactly
-   one `.zip`. `[companion/core.py; WEB_CALL_PROTOCOL.md "One zip up"]`
+   turn this off. `[companion/core.py; WEB_CALL_PROTOCOL.md "One zip up, one
+   zip down"]`
 4. An archive sent with no message gets a model asking what to do with it. The
    companion writes a one-line launch prompt naming the archive and
    `000_READ_ME_FIRST.md`; the panel types it into the composer at Go and stops
    there. If typing fails the panel offers the text to copy. The operator still
    clicks Send. `[companion/core.py launch_prompt;
    extension/service_worker.js typeLaunchPrompt]`
-5. If a call produces extra files, require one outputs ZIP and put every extra
-   file inside it. Never a third loose download.
-6. In the main response, `delivery` lists only the downloadable filenames.
-   `artifacts_manifest` lists every created **additional** file, archive members
-   included — but never the main JSON itself. The parser reserves the main
-   filename and rejects a manifest that lists it.
-   `[companion/downloads.py:663-667]`
+5. **Exactly one file comes back: the outputs ZIP.** `expected_artifacts` is
+   required and is exactly one `.zip`; `expected_main_json` names the main
+   response **inside** it, which the companion writes out beside the archive on
+   arrival. Every other created file goes in there too. Never a second loose
+   download — one that arrives is reported as ignored, not filed.
+   `[companion/core.py; companion/downloads.py _accept_outputs_archive]`
+6. In the main response, `delivery` names the archive. `artifacts_manifest`
+   lists every created **additional** file, archive members included — but
+   never the main JSON itself. The parser reserves the main filename and
+   rejects a manifest that lists it. `[companion/downloads.py]`
 7. Manifest-declared archive members must be **plain filenames**. The archive
    index keys on basename and the first duplicate wins, so members that must be
    individually hash-verified need unique basenames, and

@@ -126,14 +126,14 @@ class BundleTests(unittest.TestCase):
         second_bytes = (second_dir / "request" / "two_inputs.zip").read_bytes()
         self.assertEqual(first_bytes, second_bytes)
 
-    def test_a_call_may_return_no_artifacts_at_all(self):
-        manifest, _ = self.prepared(artifacts=None)
-
-        self.assertEqual(manifest["expected_artifacts"], [])
-        self.assertEqual(len(manifest["attach_files"]), 1)
+    def test_a_call_that_names_no_archive_is_refused(self):
+        """One zip comes back carrying everything, main JSON included, so there
+        is no such thing as a call that returns nothing to download."""
+        with self.assertRaisesRegex(ValueError, "exactly one .zip"):
+            prepare_call(self.root, self.spec(artifacts=None), self.now)
 
     def test_two_returned_artifacts_are_refused(self):
-        with self.assertRaisesRegex(ValueError, "single .zip"):
+        with self.assertRaisesRegex(ValueError, "exactly one .zip"):
             prepare_call(
                 self.root,
                 self.spec(artifacts=("one.zip", "two.zip")),
@@ -141,7 +141,7 @@ class BundleTests(unittest.TestCase):
             )
 
     def test_a_returned_artifact_that_is_not_an_archive_is_refused(self):
-        with self.assertRaisesRegex(ValueError, "single .zip"):
+        with self.assertRaisesRegex(ValueError, "exactly one .zip"):
             prepare_call(
                 self.root,
                 self.spec(artifacts=("findings.md",)),

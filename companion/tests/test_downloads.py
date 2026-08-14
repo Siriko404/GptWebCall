@@ -1,7 +1,9 @@
 import hashlib
+import io
 import json
 import tempfile
 import unittest
+import zipfile
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -34,6 +36,7 @@ class DownloadTests(unittest.TestCase):
             "subject": "Fixture call",
             "request_id": "request_fixture",
             "expected_main_json": "result.json",
+            "expected_artifacts": ["fixture_outputs.zip"],
             "prompt_text": "Return files only.\n",
             "input_files": [
                 {"path": str(request), "filename": request.name},
@@ -75,7 +78,8 @@ class DownloadTests(unittest.TestCase):
         artifact_digest=None,
     ):
         manifest = []
-        delivery = ["result.json"]
+        # One archive is what comes down, so that is what `delivery` names.
+        delivery = ["fixture_outputs.zip"]
         if artifacts:
             manifest.append(
                 {
@@ -102,6 +106,24 @@ class DownloadTests(unittest.TestCase):
     def completed(self, download_id, path):
         return {"id": download_id, "filename": str(path), "state": "complete"}
 
+    def delivery_archive(self, *, main=None, report=..., name="fixture_outputs.zip"):
+        """The one archive a call comes back as: the main JSON, plus members.
+
+        A delivery is a single download now, so a test that used to write two
+        files into the Downloads folder writes one archive holding both.
+        """
+        buffer = io.BytesIO()
+        with zipfile.ZipFile(buffer, "w") as bundle:
+            bundle.writestr(
+                "result.json", main if main is not None else self.main_json_bytes()
+            )
+            if report is not ...:
+                if report is not None:
+                    bundle.writestr("report.md", report)
+            else:
+                bundle.writestr("report.md", self.report_bytes)
+        return self.download(name, buffer.getvalue())
+
     def test_baseline_download_is_ignored(self):
         source = self.download("old.json", b"old")
 
@@ -110,35 +132,59 @@ class DownloadTests(unittest.TestCase):
         self.assertEqual(result["status"], "IGNORED")
         self.assertTrue(source.exists())
 
-    def test_artifact_waits_until_main_json_names_it(self):
-        artifact = self.download("report.md", self.report_bytes)
+    def test_one_archive_carries_the_whole_delivery(self):
+        """The main JSON is not a download; it is lifted out of the archive.
 
-        pending = handle_completed_download(self.root, self.completed(2, artifact))
+        Nothing waits for anything else to explain it, which is what the shared
+        pending pool used to be for. A call either has its archive or it has
+        nothing.
+        """
+        archive = self.delivery_archive()
 
-        self.assertEqual(pending["status"], "PENDING")
-        self.assertTrue(artifact.exists())
-        main = self.download("result.json", self.main_json_bytes())
-        moved = handle_completed_download(self.root, self.completed(3, main))
+        moved = handle_completed_download(self.root, self.completed(2, archive))
+
         self.assertEqual(moved["status"], "MOVED")
-        self.assertFalse(main.exists())
-        self.assertFalse(artifact.exists())
+        self.assertEqual(moved["stored_name"], "fixture_outputs.zip")
+        self.assertEqual(moved["extracted_main"], "result.json")
+        self.assertFalse(archive.exists())
+        self.assertTrue((self.exchange / "response" / "fixture_outputs.zip").is_file())
         self.assertEqual(
-            (self.exchange / "response" / "report.md").read_bytes(),
-            self.report_bytes,
+            json.loads(
+                (self.exchange / "response" / "result.json").read_text(encoding="utf-8")
+            )["request_id"],
+            "request_fixture",
         )
 
-    def test_browser_suffix_binds_to_expected_main_json(self):
-        main = self.download("result (1).json", self.main_json_bytes(artifacts=False))
+    def test_an_archive_without_the_main_response_is_invalid(self):
+        buffer = io.BytesIO()
+        with zipfile.ZipFile(buffer, "w") as bundle:
+            bundle.writestr("report.md", self.report_bytes)
+        archive = self.download("fixture_outputs.zip", buffer.getvalue())
 
-        moved = handle_completed_download(self.root, self.completed(3, main))
+        result = handle_completed_download(self.root, self.completed(2, archive))
 
-        self.assertEqual(moved["stored_name"], "result.json")
-        self.assertFalse(main.exists())
+        self.assertEqual(result["status"], "INVALID")
+        self.assertIn("result.json", result["error"])
+        # The archive is kept: it is the evidence, and an operator with an error
+        # message and nothing to open cannot tell what went wrong.
+        self.assertTrue((self.exchange / "response" / "fixture_outputs.zip").is_file())
+
+    def test_browser_suffix_binds_to_the_expected_archive(self):
+        archive = self.delivery_archive(
+            main=self.main_json_bytes(artifacts=False),
+            report=None,
+            name="fixture_outputs (1).zip",
+        )
+
+        moved = handle_completed_download(self.root, self.completed(3, archive))
+
+        self.assertEqual(moved["stored_name"], "fixture_outputs.zip")
+        self.assertFalse(archive.exists())
         self.assertTrue((self.exchange / "response" / "result.json").is_file())
 
     def test_unmatched_download_after_main_stays_in_downloads(self):
-        main = self.download("result.json", self.main_json_bytes(artifacts=False))
-        handle_completed_download(self.root, self.completed(3, main))
+        archive = self.delivery_archive(main=self.main_json_bytes(artifacts=False), report=None)
+        handle_completed_download(self.root, self.completed(3, archive))
         unrelated = self.download("unrelated.pdf", b"unrelated")
 
         result = handle_completed_download(
@@ -159,33 +205,30 @@ class DownloadTests(unittest.TestCase):
         self.assertIn("request_id", result["error"])
         self.assertTrue(main.exists())
 
-    def test_artifact_hash_mismatch_is_not_moved(self):
-        main = self.download("result.json", self.main_json_bytes())
-        handle_completed_download(self.root, self.completed(3, main))
-        artifact = self.download("report.md", b"wrong")
+    def test_a_loose_file_beside_the_archive_is_ignored_and_left_alone(self):
+        """Only the archive is expected, so anything else is reported as
+        ignored rather than parked somewhere the operator cannot see."""
+        archive = self.delivery_archive()
+        handle_completed_download(self.root, self.completed(3, archive))
+        loose = self.download("report.md", self.report_bytes)
 
-        result = handle_completed_download(
-            self.root, self.completed(4, artifact)
-        )
+        result = handle_completed_download(self.root, self.completed(4, loose))
 
-        self.assertEqual(result["status"], "INVALID")
-        self.assertIn("hash", result["error"])
-        self.assertTrue(artifact.exists())
+        self.assertEqual(result["status"], "IGNORED")
+        self.assertIn("report.md", result["reason"])
+        self.assertTrue(loose.exists())
 
     def test_existing_different_response_is_never_overwritten(self):
-        main = self.download("result.json", self.main_json_bytes())
-        handle_completed_download(self.root, self.completed(3, main))
-        destination = self.exchange / "response" / "report.md"
+        destination = self.exchange / "response" / "fixture_outputs.zip"
+        destination.parent.mkdir(parents=True, exist_ok=True)
         destination.write_bytes(b"different")
-        artifact = self.download("report.md", self.report_bytes)
+        archive = self.delivery_archive()
 
-        result = handle_completed_download(
-            self.root, self.completed(4, artifact)
-        )
+        result = handle_completed_download(self.root, self.completed(4, archive))
 
         self.assertEqual(result["status"], "CONFLICT")
         self.assertEqual(destination.read_bytes(), b"different")
-        self.assertTrue(artifact.exists())
+        self.assertTrue(archive.exists())
 
     def test_nonexistent_completed_path_is_rejected(self):
         missing = self.downloads / "missing.json"
@@ -194,8 +237,8 @@ class DownloadTests(unittest.TestCase):
             handle_completed_download(self.root, self.completed(3, missing))
 
     def test_finish_call_reports_missing_artifact_and_stops_monitoring(self):
-        main = self.download("result.json", self.main_json_bytes())
-        handle_completed_download(self.root, self.completed(3, main))
+        archive = self.delivery_archive(report=None)
+        handle_completed_download(self.root, self.completed(3, archive))
 
         report = finish_call(self.root)
 
@@ -210,10 +253,8 @@ class DownloadTests(unittest.TestCase):
         self.assertEqual(stored, report)
 
     def test_finish_call_validates_complete_delivery(self):
-        main = self.download("result.json", self.main_json_bytes())
-        artifact = self.download("report.md", self.report_bytes)
-        handle_completed_download(self.root, self.completed(3, main))
-        handle_completed_download(self.root, self.completed(4, artifact))
+        archive = self.delivery_archive()
+        handle_completed_download(self.root, self.completed(3, archive))
 
         report = finish_call(self.root)
 
@@ -238,10 +279,10 @@ class DownloadTests(unittest.TestCase):
         and the work facts are asserted separately here so they cannot be
         conflated again without a test going red.
         """
-        main = self.download("result.json", self.main_json_bytes(status="PARTIAL"))
-        artifact = self.download("report.md", self.report_bytes)
-        handle_completed_download(self.root, self.completed(3, main))
-        handle_completed_download(self.root, self.completed(4, artifact))
+        archive = self.delivery_archive(
+            main=self.main_json_bytes(status="PARTIAL")
+        )
+        handle_completed_download(self.root, self.completed(3, archive))
 
         report = finish_call(self.root)
 
@@ -256,10 +297,10 @@ class DownloadTests(unittest.TestCase):
         self.assertEqual(manifest["state"], "COMPLETE")
 
     def test_blocked_response_delivered_intact_is_not_invalid(self):
-        main = self.download("result.json", self.main_json_bytes(status="BLOCKED"))
-        artifact = self.download("report.md", self.report_bytes)
-        handle_completed_download(self.root, self.completed(3, main))
-        handle_completed_download(self.root, self.completed(4, artifact))
+        archive = self.delivery_archive(
+            main=self.main_json_bytes(status="BLOCKED")
+        )
+        handle_completed_download(self.root, self.completed(3, archive))
 
         report = finish_call(self.root)
 
@@ -383,10 +424,28 @@ class DownloadTests(unittest.TestCase):
             self.root, self.manifest["exchange_id"], self.downloads
         )
 
-        self.assertEqual(result["not_found"], ["result.json"])
+        self.assertEqual(result["not_found"], ["result.json", "fixture_outputs.zip"])
+
+    def test_ingest_lifts_the_main_response_out_of_the_archive(self):
+        """The main JSON is never in the Downloads folder under its own name.
+
+        This is the path that rescued a call whose download events the extension
+        lost, so it has to find the main response the same way the live route
+        does: inside the one archive that did come down.
+        """
+        self.delivery_archive(main=self.main_json_bytes(artifacts=False), report=None)
+
+        result = ingest_from_downloads(
+            self.root, self.manifest["exchange_id"], self.downloads
+        )
+
+        self.assertEqual(result["not_found"], [])
+        self.assertIn("fixture_outputs.zip", result["ingested"])
+        self.assertIn("result.json", result["ingested"])
+        self.assertTrue((self.exchange / "response" / "result.json").is_file())
 
     def test_finish_call_ingests_from_downloads_then_validates(self):
-        self.download("result.json", self.main_json_bytes(artifacts=False))
+        self.delivery_archive(main=self.main_json_bytes(artifacts=False), report=None)
 
         report = finish_call(self.root, downloads_dir=self.downloads)
 
@@ -405,7 +464,7 @@ class DownloadTests(unittest.TestCase):
         import os
         from companion.native_host import dispatch
 
-        self.download("result.json", self.main_json_bytes(artifacts=False))
+        self.delivery_archive(main=self.main_json_bytes(artifacts=False), report=None)
         previous = os.environ.get("GPTWEBCALL_DOWNLOADS_DIR")
         os.environ["GPTWEBCALL_DOWNLOADS_DIR"] = str(self.downloads)
         try:
@@ -496,10 +555,8 @@ class DownloadTests(unittest.TestCase):
         self.assertIn("declared_result.json", report["invalid_files"])
 
     def test_strict_manifest_stays_verified(self):
-        response = self.exchange / "response"
-        response.mkdir(parents=True, exist_ok=True)
-        (response / "result.json").write_bytes(self.main_json_bytes())
-        (response / "report.md").write_bytes(self.report_bytes)
+        archive = self.delivery_archive()
+        handle_completed_download(self.root, self.completed(3, archive))
 
         report = validate_response(self.exchange)
 

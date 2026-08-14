@@ -45,10 +45,14 @@ class CoreTests(unittest.TestCase):
         return path
 
     def spec(self, subject="Fixture call", expected_main_json="result.json"):
+        # One archive comes back and the main JSON is inside it, so every call
+        # names exactly one .zip. Derived from the main name here so two
+        # fixtures never collide on the reserved deliverable name.
         return {
             "subject": subject,
             "request_id": "request_fixture",
             "expected_main_json": expected_main_json,
+            "expected_artifacts": [f"{Path(expected_main_json).stem}_outputs.zip"],
             "prompt_text": "Follow this request and return files only.\n",
             "input_files": [
                 {"path": str(self.request), "filename": self.request.name},

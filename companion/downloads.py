@@ -7,7 +7,7 @@ import re
 import shutil
 import tempfile
 import zipfile
-from datetime import datetime, timedelta, timezone
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -80,42 +80,41 @@ def handle_completed_download(root: Path, download: dict[str, Any]) -> dict[str,
         if named_main:
             return _accept_main_json(root, named_main[0], source, download_id)
 
-        claims = []
-        for record in candidates:
-            main = _stored_main(record)
-            if main is None:
-                continue
-            artifact = _matching_artifact(
-                main, source.name, _reserved_artifacts(record["exchange_path"])
-            )
-            if artifact is not None:
-                claims.append((record, artifact))
-        if len(claims) > 1:
+        named_archive = [
+            record
+            for record in candidates
+            if _expected_archive(record)
+            and _matches_expected_name(source.name, _expected_archive(record))
+        ]
+        if len(named_archive) > 1:
             return {
                 "status": "AMBIGUOUS",
                 "download_id": download_id,
-                "error": f"several active calls list {source.name}: "
-                + ", ".join(str(record["exchange_id"]) for record, _ in claims),
+                "error": "several active calls expect "
+                f"{source.name}: "
+                + ", ".join(str(record["exchange_id"]) for record in named_archive),
             }
-        if claims:
-            record, artifact = claims[0]
-            exchange = Path(record["exchange_path"]).resolve()
-            result = _move_artifact(
-                source, exchange, artifact, _supersede_round(record)
+        if named_archive:
+            return _accept_outputs_archive(
+                root, named_archive[0], source, download_id
             )
-            record.setdefault("observed_download_ids", []).append(download_id)
-            if result["status"] == "MOVED":
-                _record_collected(record, artifact["filename"])
-            _save_active(root, record)
-            return result | {
-                "download_id": download_id,
-                "exchange_id": record["exchange_id"],
-            }
 
-        if any(_stored_main(record) is None for record in candidates):
-            _hold_pending(root, download_id, source)
-            return {"status": "PENDING", "download_id": download_id}
-        return {"status": "IGNORED", "reason": "not listed by the main JSON"}
+        # There used to be more here: a download could be an artifact named by
+        # a main JSON that had already landed, and one that arrived before any
+        # main JSON went into a shared pending pool to be attributed later. Both
+        # existed because a delivery came down as several files in an order
+        # nobody controlled.
+        #
+        # A delivery is one archive now, so neither case can occur, and the pool
+        # is gone with them. It is worth saying why rather than only that it is
+        # simpler: a download parked in that pool was invisible. Three separate
+        # calls ended with files sitting in the Downloads folder, the panel
+        # showing nothing wrong, and validation later reporting them missing.
+        # An unrecognised filename is now reported as ignored, immediately.
+        return {
+            "status": "IGNORED",
+            "reason": f"no active call expects {source.name}",
+        }
 
 
 def default_downloads_dir() -> Path:
@@ -181,6 +180,24 @@ def ingest_from_downloads(
             already.append(name)
         else:
             conflicts.append(name)
+
+    # The main JSON is not a download any more: it comes back inside the one
+    # archive. Nothing will ever be found for its name in the Downloads folder,
+    # so lift it out of the archive that was.
+    expected_main = expected[0]
+    if expected_main in not_found:
+        archive = _delivered_archive(exchange, manifest)
+        if archive is not None:
+            try:
+                _extract_main_from_archive(archive, expected_main, exchange, None)
+            except FileExistsError:
+                not_found.remove(expected_main)
+                conflicts.append(expected_main)
+            except (OSError, ValueError, zipfile.BadZipFile):
+                pass
+            else:
+                not_found.remove(expected_main)
+                ingested.append(expected_main)
     return {
         "status": "OK",
         "downloads_dir": str(downloads_dir),
@@ -189,6 +206,16 @@ def ingest_from_downloads(
         "conflicts": conflicts,
         "not_found": not_found,
     }
+
+
+def _delivered_archive(exchange: Path, manifest: dict[str, Any]) -> Path | None:
+    """The call's own outputs archive, once it is sitting in `response\\`."""
+    for declared in manifest.get("expected_artifacts", []):
+        name = _safe_name(str(declared), "expected artifact filename")
+        path = exchange / "response" / name
+        if path.is_file():
+            return path
+    return None
 
 
 def _download_floor(created_at: Any) -> float | None:
@@ -329,11 +356,6 @@ def finish_call(
         exchange = Path(active["exchange_path"]).resolve()
         manifest_path = exchange / "EXCHANGE_MANIFEST.json"
         manifest = _read_json_object(manifest_path, "EXCHANGE_MANIFEST")
-        main = _stored_main(active)
-        if main is not None:
-            _release_pending(root, active, exchange, main, _supersede_round(active))
-            _save_active(root, active)
-
         if downloads_dir is not None:
             ingest_from_downloads(root, active["exchange_id"], downloads_dir)
 
@@ -366,15 +388,145 @@ def _accept_main_json(
         _save_active(root, record)
         return {"status": "INVALID", "error": str(error)}
     _record_collected(record, expected_main)
-    released = _release_pending(root, record, exchange, main, supersede_round)
     _save_active(root, record)
     return {
         "status": "MOVED",
         "download_id": download_id,
         "exchange_id": record["exchange_id"],
         "stored_name": expected_main,
-        "released_pending": released,
     }
+
+
+def _accept_outputs_archive(
+    root: Path, record: dict[str, Any], source: Path, download_id: int
+) -> dict[str, Any]:
+    """File the one archive a call comes back as, and lift the main JSON out.
+
+    One zip comes down carrying everything, so this is the whole delivery
+    arriving in a single event. Nothing has to be held pending waiting for
+    another file to explain it, and a call can no longer half-arrive: either the
+    archive is here or nothing is.
+
+    The archive is filed first and kept even when the main JSON inside it is
+    unusable. It is the evidence, and discarding it would leave an operator with
+    an error message and nothing to inspect.
+    """
+    exchange = Path(record["exchange_path"]).resolve()
+    archive_name = _expected_archive(record)
+    expected_main = _expected_main(record)
+    supersede_round = _supersede_round(record)
+    record.setdefault("observed_download_ids", []).append(download_id)
+    destination = exchange / "response" / archive_name
+    try:
+        _safe_move(source, destination, supersede_round)
+    except FileExistsError as error:
+        _save_active(root, record)
+        return {"status": "CONFLICT", "error": str(error)}
+    except OSError as error:
+        _save_active(root, record)
+        return {"status": "INVALID", "error": str(error)}
+    _record_collected(record, archive_name)
+
+    try:
+        _extract_main_from_archive(destination, expected_main, exchange, supersede_round)
+        main = _parse_main_response(
+            exchange / "response" / expected_main,
+            record["request_id"],
+            expected_main,
+            (archive_name,),
+        )
+    except FileExistsError as error:
+        _save_active(root, record)
+        return {"status": "CONFLICT", "error": str(error)}
+    except (OSError, ValueError, zipfile.BadZipFile) as error:
+        _save_active(root, record)
+        return {
+            "status": "INVALID",
+            "download_id": download_id,
+            "exchange_id": record["exchange_id"],
+            "stored_name": archive_name,
+            "error": str(error),
+        }
+    _record_collected(record, expected_main)
+    _save_active(root, record)
+    return {
+        "status": "MOVED",
+        "download_id": download_id,
+        "exchange_id": record["exchange_id"],
+        "stored_name": archive_name,
+        "extracted_main": expected_main,
+    }
+
+
+def _extract_main_from_archive(
+    archive: Path, expected_main: str, exchange: Path, supersede_round: int | None
+) -> None:
+    """Write the main JSON out of the delivered archive, beside it.
+
+    Everything downstream reads the main response from `response\\` as a file,
+    so lifting it out here means validation, defects and repair need to know
+    nothing about where it travelled.
+
+    The member is read by name rather than extracted, so no member path can
+    decide where anything lands. A responder that casefolds the name differently
+    is still accepted; one that omits it has not delivered the response.
+    """
+    with zipfile.ZipFile(archive) as bundle:
+        wanted = expected_main.casefold()
+        member = next(
+            (name for name in bundle.namelist() if name.casefold() == wanted), None
+        )
+        if member is None:
+            raise ValueError(
+                f"{archive.name} does not contain the main response {expected_main}"
+            )
+        payload = bundle.read(member)
+
+    destination = exchange / "response" / expected_main
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    if destination.exists():
+        existing = destination.read_bytes()
+        if existing == payload:
+            return
+        if supersede_round is None:
+            raise FileExistsError(
+                f"response already contains different bytes: {expected_main}"
+            )
+        _archive_superseded(destination, supersede_round)
+    descriptor, temporary_name = tempfile.mkstemp(
+        prefix=".incoming-", suffix=".tmp", dir=destination.parent
+    )
+    os.close(descriptor)
+    temporary = Path(temporary_name)
+    try:
+        with temporary.open("wb") as outgoing:
+            outgoing.write(payload)
+            outgoing.flush()
+            os.fsync(outgoing.fileno())
+        os.replace(temporary, destination)
+    except BaseException:
+        temporary.unlink(missing_ok=True)
+        raise
+
+
+def _expected_archive(record: dict[str, Any]) -> str | None:
+    """The one outputs archive an active call expects, read from its manifest.
+
+    Calls prepared before one-zip-out expected the main JSON as its own
+    download; those have no archive to match and return None so the older
+    routing still applies to them.
+    """
+    try:
+        manifest = _read_json_object(
+            Path(record["exchange_path"]) / "EXCHANGE_MANIFEST.json",
+            "EXCHANGE_MANIFEST",
+        )
+    except (FileNotFoundError, ValueError, KeyError):
+        return None
+    declared = manifest.get("expected_artifacts")
+    if not isinstance(declared, list) or len(declared) != 1:
+        return None
+    return _safe_name(str(declared[0]), "expected artifact filename")
 
 
 def _expected_main(record: dict[str, Any]) -> str:
@@ -399,8 +551,14 @@ def _stored_main(record: dict[str, Any]) -> dict[str, Any] | None:
     path = Path(record["exchange_path"]) / "response" / expected_main
     if not path.is_file():
         return None
+    archive = _expected_archive(record)
     try:
-        return _parse_main_response(path, record["request_id"], expected_main)
+        return _parse_main_response(
+            path,
+            record["request_id"],
+            expected_main,
+            (archive,) if archive else None,
+        )
     except ValueError:
         return None
 
@@ -423,7 +581,12 @@ def validate_response(exchange_dir: Path) -> dict[str, Any]:
         return _validation_report(manifest, expected_main, missing, invalid, checked)
 
     try:
-        main = _parse_main_response(main_path, manifest["request_id"], expected_main)
+        main = _parse_main_response(
+            main_path,
+            manifest["request_id"],
+            expected_main,
+            tuple(str(name) for name in manifest.get("expected_artifacts", [])),
+        )
     except ValueError:
         # The strict contract failed. That is one of two very different things and
         # they used to be conflated: the file might be genuinely broken (not JSON,
@@ -638,7 +801,10 @@ def _validation_report(
 
 
 def _parse_main_response(
-    path: Path, request_id: str, expected_main: str
+    path: Path,
+    request_id: str,
+    expected_main: str,
+    delivered_as: tuple[str, ...] | None = None,
 ) -> dict[str, Any]:
     main = _read_json_object(path, "main response")
     if main.get("request_id") != request_id:
@@ -683,59 +849,24 @@ def _parse_main_response(
                 raise ValueError(f"artifact media_type is invalid: {name}")
             artifact["sha256"] = digest.casefold()
 
-    # `delivery` names what came down as downloads: the main JSON and the outputs
-    # archive. It cannot also be required to name every created artifact, because
-    # a created artifact may be a member of that archive and was never separately
-    # downloadable. This function is the gate that decides whether the file may be
-    # moved at all, and it runs while downloads are still arriving, so it checks
-    # only the identity of the delivery. Whether every created file was accounted
-    # for is decided by `collect_defects`, once everything has landed and archive
-    # members can be resolved.
-    if expected_main.casefold() not in {item.casefold() for item in delivery}:
-        raise ValueError("main response delivery does not name the main JSON")
+    # `delivery` names what came down as downloads, which is now one archive
+    # with this file inside it. Naming the main JSON is still accepted, because
+    # it is the response and a responder listing it is not wrong, and because
+    # exchanges prepared before one-zip-out did download it under that name.
+    # Naming neither means the response is describing some other delivery.
+    #
+    # It cannot be required to name every created artifact: a created artifact
+    # is usually a member of the archive and was never separately downloadable.
+    # This function gates whether the file may be filed at all, so it checks
+    # identity only. Whether every created file was accounted for is decided by
+    # `collect_defects`, once everything has landed and members can be resolved.
+    named = {item.casefold() for item in delivery}
+    acceptable = {expected_main.casefold()} | {
+        item.casefold() for item in delivered_as or ()
+    }
+    if not (named & acceptable):
+        raise ValueError("main response delivery does not name what came down")
     return main
-
-
-def _reserved_artifacts(exchange_path: Any) -> set[str] | None:
-    """The artifact filenames a call reserved, or None when it reserved none.
-
-    `expected_artifacts` is optional, so an absent or empty list means the call
-    made no promise about what comes back and the main JSON stays the only
-    authority. Where the list exists it is the authority, and it is one the
-    responder cannot rewrite.
-    """
-    try:
-        manifest = _read_json_object(
-            Path(exchange_path) / "EXCHANGE_MANIFEST.json", "EXCHANGE_MANIFEST"
-        )
-    except (FileNotFoundError, ValueError):
-        return None
-    declared = manifest.get("expected_artifacts")
-    if not declared:
-        return None
-    return {str(name).casefold() for name in declared}
-
-
-def _matching_artifact(
-    main: dict[str, Any], actual_name: str, reserved: set[str] | None = None
-) -> dict[str, Any] | None:
-    """The manifest entry a download satisfies, if the call may accept it at all.
-
-    A response names its own artifacts, so with no reservation the responder
-    decides what the exchange will accept — including names that are members of
-    the outputs archive rather than downloads in their own right. Where the call
-    reserved its artifact filenames, only those are filed; anything else is left
-    in the downloads folder untouched.
-    """
-    for artifact in main["artifacts_manifest"]:
-        if artifact["status"] != "CREATED":
-            continue
-        if not _matches_expected_name(actual_name, artifact["filename"]):
-            continue
-        if reserved is not None and artifact["filename"].casefold() not in reserved:
-            continue
-        return artifact
-    return None
 
 
 def _supersede_round(active: dict[str, Any]) -> int | None:
@@ -743,123 +874,6 @@ def _supersede_round(active: dict[str, Any]) -> int | None:
     if isinstance(value, int) and not isinstance(value, bool) and value > 0:
         return value
     return None
-
-
-def _pending_path(root: Path) -> Path:
-    return root / "state" / "PENDING_DOWNLOADS.json"
-
-
-def _load_pending(root: Path) -> list[dict[str, Any]]:
-    path = _pending_path(root)
-    if not path.is_file():
-        return []
-    value = _read_json_object(path, "PENDING_DOWNLOADS")
-    items = value.get("downloads")
-    return items if isinstance(items, list) else []
-
-
-PENDING_TTL_DAYS = 7
-
-
-def _prune_pending(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Drop pending downloads that can never be released.
-
-    An artifact downloaded before any main JSON waits here until some call names
-    it. Nothing ever removed an entry that was never named, so the pool grew for
-    the life of the installation — one real installation held 71, the oldest
-    eighteen days old, most of them files from calls that had long since
-    finished. A pool that only grows is a pool nobody reads.
-
-    Two entries are droppable. One whose file is gone can never be moved. One
-    older than the window belongs to a call that has finished, since a call is
-    driven by hand in a single sitting. Entries with no timestamp predate this
-    field and are treated as expired for the same reason.
-    """
-    floor = datetime.now(timezone.utc) - timedelta(days=PENDING_TTL_DAYS)
-    kept: list[dict[str, Any]] = []
-    for item in items:
-        filename = item.get("filename")
-        if not isinstance(filename, str) or not Path(filename).is_file():
-            continue
-        held_at = item.get("held_at")
-        if not isinstance(held_at, str):
-            continue
-        try:
-            if datetime.fromisoformat(held_at) < floor:
-                continue
-        except ValueError:
-            continue
-        kept.append(item)
-    return kept
-
-
-def _hold_pending(root: Path, download_id: int, source: Path) -> None:
-    """Park a download that arrived before any call's main JSON could claim it.
-
-    The pool is shared across active calls. An artifact downloaded before its
-    main JSON cannot be attributed yet, so it waits until some call's main JSON
-    names it.
-    """
-    pending = _prune_pending(_load_pending(root))
-    if any(item.get("id") == download_id for item in pending):
-        return
-    pending.append(
-        {
-            "id": download_id,
-            "filename": str(source),
-            "held_at": datetime.now(timezone.utc).isoformat(),
-        }
-    )
-    _write_json_atomic(_pending_path(root), {"downloads": pending})
-
-
-def _release_pending(
-    root: Path,
-    active: dict[str, Any],
-    exchange: Path,
-    main: dict[str, Any],
-    supersede_round: int | None = None,
-) -> list[str]:
-    remaining: list[dict[str, Any]] = []
-    moved: list[str] = []
-    for pending in _load_pending(root):
-        path = Path(pending["filename"])
-        if not path.is_file():
-            continue
-        artifact = _matching_artifact(main, path.name, _reserved_artifacts(exchange))
-        if artifact is None:
-            remaining.append(pending)
-            continue
-        result = _move_artifact(path, exchange, artifact, supersede_round)
-        if result["status"] == "MOVED":
-            name = artifact["filename"]
-            _record_collected(active, name)
-            moved.append(name)
-        else:
-            remaining.append(pending)
-    _write_json_atomic(_pending_path(root), {"downloads": _prune_pending(remaining)})
-    return moved
-
-
-def _move_artifact(
-    source: Path,
-    exchange: Path,
-    artifact: dict[str, Any],
-    supersede_round: int | None = None,
-) -> dict[str, Any]:
-    digest, size = _sha256(source)
-    if digest != artifact["sha256"] or size != artifact["size"]:
-        return {
-            "status": "INVALID",
-            "error": f"artifact hash or size does not match: {artifact['filename']}",
-        }
-    try:
-        _safe_move(
-            source, exchange / "response" / artifact["filename"], supersede_round
-        )
-    except FileExistsError as error:
-        return {"status": "CONFLICT", "error": str(error)}
-    return {"status": "MOVED", "stored_name": artifact["filename"]}
 
 
 def _safe_move(

@@ -4,9 +4,7 @@ import {
   buildFileAssignment,
 } from "./lib/attachment.js";
 import {
-  anyCompletedTrackedDownload,
   anyShouldObserveDownload,
-  claimCompletedDownload,
   handoffForTab,
 } from "./lib/downloads.js";
 import { CHATGPT_URL, chooseTargetTab } from "./lib/target.js";
@@ -47,11 +45,6 @@ chrome.debugger.onEvent.addListener((source, method, params) => {
     await setHandoffStatus(source.tabId, "ERROR", error.message);
     await safeDetach(source.tabId);
   });
-});
-
-
-chrome.downloads.onCreated.addListener((downloadItem) => {
-  observeCreatedDownload(downloadItem).catch((error) => recordDownloadFailure(downloadItem?.id, error));
 });
 
 
@@ -497,48 +490,45 @@ async function finishCall(exchangeId) {
     : null;
   await chrome.storage.session.set({ lastReport: report, lastHandoff });
   await dropHandoff(target);
-  await resetTrackerWhenIdle();
   return report;
 }
 
 
-async function resetTrackerWhenIdle() {
-  const handoffs = await readHandoffs();
-  if (Object.keys(handoffs).length === 0) {
-    await chrome.storage.session.set({ downloadTracker: { ids: [], processing: [] } });
-  }
-}
-
-
-async function observeCreatedDownload(downloadItem) {
-  const stored = await chrome.storage.session.get(["handoffs", "downloadTracker"]);
-  const tracker = stored.downloadTracker ?? { ids: [], processing: [] };
-  if (
-    !anyShouldObserveDownload(stored.handoffs ?? {}, downloadItem)
-    || tracker.ids.includes(downloadItem.id)
-  ) {
-    return;
-  }
-  tracker.ids.push(downloadItem.id);
-  await chrome.storage.session.set({ downloadTracker: tracker });
-}
-
-
+/* One completed download, decided from the download itself.
+ *
+ * This used to take two events. `chrome.downloads.onCreated` wrote the id into
+ * a tracker in session storage, and only an id found in that tracker was
+ * submitted when it completed. Both halves were a read-modify-write with no
+ * lock, so two downloads created in the same moment both read the empty tracker
+ * and the second write erased the first. The erased download then completed,
+ * failed the tracker check, and was dropped in silence.
+ *
+ * That is what happened. Three calls ended with an archive parked in the
+ * companion's pending pool and the main JSON's event never arriving, and the
+ * operator had to run `validate` by hand to rescue files Chrome had already
+ * written. A service worker evicted between the two events produced the same
+ * loss without any race at all.
+ *
+ * So there is one event now. Everything the decision needs — start time,
+ * filename, state — is on the item fetched here, and `shouldObserveDownload`
+ * asks the same questions it always did. Nothing has to survive between two
+ * callbacks, so nothing can be lost between them. Duplicate submissions are
+ * fine: the companion holds the state lock and answers DUPLICATE for an id it
+ * has already seen, which makes it the one authority rather than a second copy
+ * of the bookkeeping.
+ */
 async function submitCompletedDownload(delta) {
-  const stored = await chrome.storage.session.get(["handoffs", "downloadTracker"]);
+  if (delta?.state?.current !== "complete" || !Number.isInteger(delta.id)) {
+    return;
+  }
+  const stored = await chrome.storage.session.get("handoffs");
   const handoffs = stored.handoffs ?? {};
-  const tracker = stored.downloadTracker ?? { ids: [], processing: [] };
-  if (!anyCompletedTrackedDownload(handoffs, tracker.ids, delta)) {
-    return;
-  }
-  if (!claimCompletedDownload(tracker, delta.id)) {
-    return;
-  }
-  await chrome.storage.session.set({ downloadTracker: tracker });
-
   const matches = await chrome.downloads.search({ id: delta.id });
   const item = matches[0];
   if (!item || item.state !== "complete" || !item.filename) {
+    return;
+  }
+  if (!anyShouldObserveDownload(handoffs, item)) {
     return;
   }
   const result = await nativeCommand("download.completed", {

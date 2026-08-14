@@ -79,6 +79,38 @@ class ProtocolTests(unittest.TestCase):
         ).read_text(encoding="utf-8")
         self.assertIn("Send in the conversation I am in", prep)
 
+    def test_the_package_rule_is_one_zip_each_way_everywhere_it_is_stated(self):
+        """One shape, stated the same way in every document a session reads.
+
+        The rule is only as strong as its weakest restatement: a skill still
+        describing two files down would have a session writing prompts that ask
+        for a delivery the router now ignores.
+        """
+        root = self.root
+        skill = root / "skill" / "webcall"
+        for path, needles in (
+            (root / "WEB_CALL_PROTOCOL.md", ("## One zip up, one zip down",)),
+            (
+                skill / "references" / "OPERATING_CORE.md",
+                ("Exactly one file goes up", "Exactly one file comes back"),
+            ),
+            (skill / "skills" / "prep" / "SKILL.md", ("One file comes back",)),
+            (
+                skill / "references" / "SMOKE_TEST.md",
+                ("One file comes back", "exactly one downloadable"),
+            ),
+            (root / "docs" / "MANUAL_FALLBACK.md", ("one expected outputs archive",)),
+        ):
+            text = path.read_text(encoding="utf-8")
+            for needle in needles:
+                self.assertIn(needle, text, f"{path.name}: {needle}")
+
+        # The pending pool is what made a lost download invisible. Nothing may
+        # quietly reintroduce it.
+        for module in ("downloads.py", "repair.py", "core.py"):
+            source = (root / "companion" / module).read_text(encoding="utf-8")
+            self.assertNotIn("_hold_pending", source, module)
+
     def test_protocol_is_the_complete_global_reference(self):
         protocol = (self.root / "WEB_CALL_PROTOCOL.md").read_text(encoding="utf-8")
 
@@ -86,9 +118,9 @@ class ProtocolTests(unittest.TestCase):
             "System root: the directory containing this file",
             "reasoning-heavy",
             "000_READ_ME_FIRST.md",
-            "## One zip up, at most two files down",
+            "## One zip up, one zip down",
             "_inputs.zip",
-            "either empty, when the call returns nothing but the main JSON, or a single `.zip`",
+            "`expected_artifacts` is therefore exactly one `.zip`",
             "Several calls may be active at once",
             "## Parallel calls",
             "## Filenames are the routing key",

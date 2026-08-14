@@ -1,11 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import {
-  claimCompletedDownload,
-  completedTrackedDownload,
-  shouldObserveDownload,
-} from "../lib/downloads.js";
+import { readFile } from "node:fs/promises";
+
+import { shouldObserveDownload } from "../lib/downloads.js";
 
 
 const active = {
@@ -54,49 +52,40 @@ test("does not observe baseline, repeated, malformed, or post-Done downloads", (
 });
 
 
-test("submits a tracked download exactly when Chrome marks it complete", () => {
-  const tracked = [4, 7];
-  assert.equal(
-    completedTrackedDownload(active, tracked, {
-      id: 4,
-      state: { current: "complete" },
-    }),
-    true,
-  );
-  assert.equal(
-    completedTrackedDownload(active, tracked, {
-      id: 4,
-      state: { current: "interrupted" },
-    }),
-    false,
-  );
-  assert.equal(
-    completedTrackedDownload(active, tracked, {
-      id: 9,
-      state: { current: "complete" },
-    }),
-    false,
-  );
+/* The regression this file exists for.
+ *
+ * Deciding a download took two events: onCreated wrote its id into a tracker in
+ * session storage, and onChanged submitted only ids found there. Both halves
+ * were an unlocked read-modify-write, so two downloads created together both
+ * read the empty tracker and the second write erased the first. The erased one
+ * completed, failed the lookup, and vanished without an error anywhere. It cost
+ * three real calls, each rescued only by running `validate` by hand.
+ *
+ * One event now, and the decision is made from the download itself. A tracker
+ * reappearing here is that bug coming back.
+ */
+test("a completed download is decided from one event, with no state kept between two", async () => {
+  const worker = await readFile(new URL("../service_worker.js", import.meta.url), "utf8");
+
+  assert.doesNotMatch(worker, /downloadTracker/);
+  assert.doesNotMatch(worker, /downloads\.onCreated\.addListener/);
+  assert.match(worker, /downloads\.onChanged\.addListener/);
+  // The item is fetched and judged inside the one handler.
+  assert.match(worker, /chrome\.downloads\.search\(\{ id: delta\.id \}\)/);
+  assert.match(worker, /anyShouldObserveDownload\(handoffs, item\)/);
 });
 
 
-test("completion is disabled immediately after Done", () => {
+test("only a completed download is submitted", async () => {
+  const worker = await readFile(new URL("../service_worker.js", import.meta.url), "utf8");
+
+  assert.match(worker, /delta\?\.state\?\.current !== "complete"/);
+  // monitoring: false is still the gate that Done closes.
   assert.equal(
-    completedTrackedDownload(
+    shouldObserveDownload(
       { ...active, monitoring: false },
-      [4],
-      { id: 4, state: { current: "complete" } },
+      { id: 4, startTime: "2026-07-14T19:30:01.000Z" },
     ),
     false,
   );
-});
-
-
-test("claims each completed download only once", () => {
-  const tracker = { ids: [4], processing: [] };
-
-  assert.equal(claimCompletedDownload(tracker, 4), true);
-  assert.deepEqual(tracker, { ids: [4], processing: [4] });
-  assert.equal(claimCompletedDownload(tracker, 4), false);
-  assert.equal(claimCompletedDownload(tracker, 7), false);
 });

@@ -31,6 +31,7 @@ class NativeHostTests(unittest.TestCase):
                 "subject": "Native fixture",
                 "request_id": "request_native",
                 "expected_main_json": "native_result.json",
+                "expected_artifacts": ["native_outputs.zip"],
                 "prompt_text": "Return files only.\n",
                 "input_files": [
                     {"path": str(request), "filename": request.name},
