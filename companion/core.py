@@ -49,9 +49,17 @@ def prepare_call(root: Path, spec: dict[str, Any], now: datetime) -> dict[str, A
         raise ValueError("input_files must be a non-empty list")
     expected_artifacts = _expected_artifact_names(spec)
 
+    # ChatGPT has refused loose .md attachments, which strands a call whose
+    # instructions live in one. Opting in moves the prompt inside the archive so
+    # a single .zip goes up. It has to be unmissable once it is in there: the
+    # name says what it is, and the bundle is written in casefolded name order,
+    # so a leading 000 puts it first in the archive as well as first in any
+    # listing. Off by default - the two-file shape is still the contract.
+    prompt_in_bundle = bool(spec.get("prompt_in_bundle", False))
+
     timestamp = now.strftime(_TIMESTAMP)
     exchange_id = f"{timestamp}_{slug}"
-    prompt_name = f"PROMPT_{timestamp}.md"
+    prompt_name = "000_READ_ME_FIRST.md" if prompt_in_bundle else f"PROMPT_{timestamp}.md"
     bundle_name = f"{slug}_inputs.zip"
     calls_dir = root / "calls"
     state_dir = root / "state"
@@ -115,7 +123,10 @@ def prepare_call(root: Path, spec: dict[str, Any], now: datetime) -> dict[str, A
         # files stay on disk beside it: they are the provenance record and the
         # thing whose hashes are checked, while the archive is what is uploaded.
         bundle_path = request_dir / bundle_name
-        _write_bundle(bundle_path, [name for _, name in prepared_inputs], request_dir)
+        bundled = [name for _, name in prepared_inputs]
+        if prompt_in_bundle:
+            bundled.append(prompt_name)
+        _write_bundle(bundle_path, bundled, request_dir)
         request_files.append(_file_record(bundle_path))
 
         governing = _read_json_object(
@@ -137,7 +148,7 @@ def prepare_call(root: Path, spec: dict[str, Any], now: datetime) -> dict[str, A
             "expected_main_json": expected_main,
             "expected_artifacts": expected_artifacts,
             "request_files": request_files,
-            "attach_files": [prompt_name, bundle_name],
+            "attach_files": [bundle_name] if prompt_in_bundle else [prompt_name, bundle_name],
             "response_dir": "response",
         }
         _write_json_atomic(staging / "EXCHANGE_MANIFEST.json", manifest)

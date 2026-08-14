@@ -74,7 +74,7 @@ Constraints imposed by the owner or by the environment are not bias — state th
 
 ## Two files up, two files down
 
-**Every exchange is exactly two files in each direction. This is not a style preference; it is enforced at preparation and it changes how you write a spec.**
+**Every exchange is two files up and at most two back. This is not a style preference; it is enforced at preparation and it changes how you write a spec.** One opt-in narrows the up side to a single file; it is described below and is off unless a spec asks for it.
 
 Up:
 
@@ -91,6 +91,16 @@ Down:
 | `<pass>_outputs.zip` | Every other returned file, inside one archive. |
 
 `expected_artifacts` is therefore either empty, when the call returns nothing but the main JSON, or a single `.zip`. `prepare` refuses anything else. Two artifacts, or one artifact that is not an archive, is an error at preparation rather than a surprise at download.
+
+### When one file has to go up instead of two
+
+ChatGPT has refused loose `.md` attachments, which strands a call whose instructions live in one. Setting `"prompt_in_bundle": true` in the preparation spec moves the prompt inside the archive, so a single `.zip` is uploaded.
+
+The prompt is then named `000_READ_ME_FIRST.md` rather than `PROMPT_<timestamp>.md`. Inside an archive the name is the only thing telling a model which file governs, and the bundle is written in casefolded name order, so the leading `000` puts it first in the archive as well as first in any listing the model prints.
+
+`attach_files` becomes that one archive, and everything that reads `attach_files` — the extension, the manual fallback — follows without changing. The loose prompt still sits in `request\` as part of the provenance record, exactly like every other input.
+
+It is off by default. Two files up is still the contract, and the reason is that a natively attached prompt is read directly while an archived one has to be extracted first. Turn it on when the alternative is a call that cannot be sent at all.
 
 You still enumerate `input_files` normally. The companion copies each one into `request/` and then packs them. Both the loose files and the archive stay on disk: the loose files are the provenance record whose hashes are verified, and the archive is what is uploaded. Only the prompt and the archive are handed to the file chooser.
 

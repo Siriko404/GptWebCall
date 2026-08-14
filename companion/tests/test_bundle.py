@@ -1,9 +1,11 @@
 """Everything except the prompt travels as one archive.
 
-Two files go up and two come back. That is the whole rule, and these tests pin
-the parts of it that could silently regress: what lands inside the archive, that
-the archive is the only thing uploaded beside the prompt, that its digest is
-stable, and that the return side is held to a single archive as well.
+Two files go up and two come back. That is the rule, and these tests pin the
+parts of it that could silently regress: what lands inside the archive, that the
+archive is the only thing uploaded beside the prompt, that its digest is stable,
+and that the return side is held to a single archive as well.
+
+One opt-in bends the up side to a single file, and is pinned here too.
 """
 
 from __future__ import annotations
@@ -138,6 +140,37 @@ class BundleTests(unittest.TestCase):
                 self.spec(artifacts=("findings.md",)),
                 self.now,
             )
+
+    def test_the_prompt_can_be_moved_inside_the_archive(self):
+        """ChatGPT has refused loose .md attachments, stranding a call whose
+        instructions are in one. The opt-in packs the prompt into the archive so
+        a single file goes up. It has to be unmissable once it is in there: the
+        name says what it is, and the bundle is written in casefolded name order,
+        so the leading 000 puts it first in the archive and in any listing."""
+        spec = self.spec()
+        spec["prompt_in_bundle"] = True
+        manifest = prepare_call(self.root, spec, self.now)
+        exchange = self.root / "calls" / manifest["exchange_id"]
+
+        self.assertEqual(manifest["attach_files"], ["bundle_fixture_inputs.zip"])
+        uploaded = [Path(p).name for p in request_paths(self.root, manifest["exchange_id"])]
+        self.assertEqual(uploaded, ["bundle_fixture_inputs.zip"])
+
+        with zipfile.ZipFile(exchange / "request" / "bundle_fixture_inputs.zip") as bundle:
+            names = bundle.namelist()
+            self.assertEqual(names[0], "000_READ_ME_FIRST.md")
+            self.assertEqual(bundle.read("000_READ_ME_FIRST.md"), b"Read the archive.")
+        # Still on disk beside the archive, like every other input: the loose
+        # copy is the provenance record whose hash is verified.
+        self.assertTrue((exchange / "request" / "000_READ_ME_FIRST.md").is_file())
+        self.assertEqual(len(manifest["request_files"]), 6)
+
+    def test_the_prompt_stays_outside_the_archive_by_default(self):
+        manifest, exchange = self.prepared()
+
+        self.assertEqual(len(manifest["attach_files"]), 2)
+        with zipfile.ZipFile(exchange / "request" / "bundle_fixture_inputs.zip") as bundle:
+            self.assertNotIn("000_READ_ME_FIRST.md", bundle.namelist())
 
     def test_an_input_may_not_take_the_archive_name(self):
         spec = self.spec()
