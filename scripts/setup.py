@@ -1,18 +1,27 @@
 """Install GPT Web Call end to end. One command, run once, from the checkout.
 
-There are two halves to an installation and they used to be separate errands:
-the native-messaging host that lets Chrome talk to the companion, and the
-`webcall` skills that give an agent session a way to drive it. Neither is useful
-without the other, and doing one and forgetting the other produces a system that
-looks installed and does nothing.
-
     python scripts/setup.py
-    python scripts/setup.py --dry-run    # report the plan, change nothing
+    python scripts/setup.py --dry-run     # report the plan, change nothing
+    python scripts/setup.py --no-browser  # do not open Chrome or wait for it
 
-Everything a machine can do is done here. Two things are left, and they are
-stated at the end rather than assumed: a person loads the unpacked extension in
-Chrome, because Chrome has no supported way to let a script do that, and a
-person restarts Claude Code, because slash commands register at startup.
+There are two halves and they used to be separate errands: the native-messaging
+host that lets Chrome talk to the companion, and the `webcall` skills that give
+an agent session a way to drive it. Neither is useful without the other, and
+doing one and forgetting the other produces a system that looks installed and
+does nothing.
+
+Everything a machine can do is done here, including the parts around the one
+step it cannot. Loading an unpacked extension is that step: Chrome removed
+`--load-extension` from stable, and a profile's preferences are HMAC-protected
+against being written by hand. Verified against Chrome 151 — launching with
+`--load-extension` on a fresh profile leaves the extension absent.
+
+So the click stays with a person, and everything else does not. This opens
+chrome://extensions, puts the folder path on the clipboard so it can be pasted
+into the picker rather than navigated to, waits for Chrome to record the
+extension, and then checks that what Chrome loaded is what the host was pinned
+to — repinning by itself if they disagree. The only other human step is
+restarting Claude Code, because slash commands register at startup.
 """
 
 from __future__ import annotations
@@ -23,6 +32,13 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "scripts"))
+
+from extension_id import (  # noqa: E402
+    loaded_extension_id,
+    resolve,
+    wait_for_extension,
+)
 
 GUIDE = """\
 How to use it, in full:
@@ -50,8 +66,132 @@ def run(command: list[str], what: str) -> None:
         )
 
 
+def chrome_executable() -> str | None:
+    try:
+        import winreg
+    except ImportError:
+        return None
+    for hive in (winreg.HKEY_LOCAL_MACHINE, winreg.HKEY_CURRENT_USER):
+        try:
+            with winreg.OpenKey(
+                hive, r"SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\chrome.exe"
+            ) as key:
+                value, _ = winreg.QueryValueEx(key, "")
+        except OSError:
+            continue
+        if value and Path(value).is_file():
+            return str(value)
+    return None
+
+
+def stage_on_clipboard(text: str) -> bool:
+    """So the folder can be pasted into Chrome's picker, not navigated to."""
+    try:
+        subprocess.run("clip", input=text.encode("utf-16-le"), check=True, shell=True)
+    except (OSError, subprocess.CalledProcessError):
+        return False
+    return True
+
+
+def pinned_origin_id() -> str | None:
+    """The extension id the installed host manifest actually pins.
+
+    Read as utf-8-sig, not utf-8. PowerShell's `Set-Content -Encoding UTF8`
+    writes a BOM, so the manifest this very repository generates starts with
+    one; reading it strictly made this function return None and the caller
+    concluded the pin disagreed with Chrome and repinned an already correct
+    install. Chrome itself takes the BOM without complaint, which is why the
+    file has carried one all along without anyone noticing.
+    """
+    manifest = ROOT / "native-host" / "com.sina.gptwebcall.json"
+    if not manifest.is_file():
+        return None
+    import json
+
+    try:
+        origins = json.loads(manifest.read_text(encoding="utf-8-sig"))["allowed_origins"]
+    except (OSError, ValueError, KeyError):
+        return None
+    if not origins:
+        return None
+    return str(origins[0]).removeprefix("chrome-extension://").rstrip("/")
+
+
+def install_extension(extension: Path, no_browser: bool) -> int:
+    """Walk the operator through the one step, then verify it happened."""
+    print("\n--- Chrome extension ---")
+    already = loaded_extension_id(extension)
+    if already:
+        print(f"Chrome already has this extension loaded as {already}.")
+        print("Reload it in chrome://extensions so it picks up this checkout.")
+        return confirm_pinned_id(already)
+
+    print("This is the one step a script cannot do: Chrome removed")
+    print("--load-extension from stable, so the folder has to be chosen by hand.")
+    print()
+    print(f"    {extension}")
+    print()
+    if stage_on_clipboard(str(extension)):
+        print("That path is on your clipboard.")
+    print("In chrome://extensions: turn on Developer mode, click Load unpacked,")
+    print("paste the path into the folder picker, and choose it.")
+
+    if no_browser:
+        print("\n(--no-browser: not opening Chrome, not waiting.)")
+        return 0
+
+    chrome = chrome_executable()
+    if chrome:
+        try:
+            subprocess.Popen([chrome, "chrome://extensions"])
+            print("\nOpened chrome://extensions.")
+        except OSError:
+            print("\nCould not launch Chrome; open chrome://extensions yourself.")
+    else:
+        print("\nChrome was not found in the registry; open chrome://extensions yourself.")
+
+    print("Waiting up to five minutes for Chrome to report it. Ctrl+C to skip.")
+    try:
+        found = wait_for_extension(extension, timeout=300.0)
+    except KeyboardInterrupt:
+        print("\nSkipped. Rerun this script once the extension is loaded.")
+        return 0
+    if not found:
+        print("\nChrome has not recorded it yet. Rerun this script once it is loaded;")
+        print("nothing already installed is undone by running it again.")
+        return 0
+    print(f"Chrome loaded it as {found}.")
+    return confirm_pinned_id(found)
+
+
+def confirm_pinned_id(actual: str) -> int:
+    """The host pins one origin. If Chrome disagrees, repin rather than report."""
+    pinned = pinned_origin_id()
+    if pinned == actual:
+        print(f"The native host is pinned to the same id. ({actual})")
+        return 0
+    print(f"The native host is pinned to {pinned}, but Chrome loaded {actual}.")
+    print("Repinning.")
+    run(
+        [
+            "powershell",
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            str(ROOT / "scripts" / "install.ps1"),
+            "-ExtensionId",
+            actual,
+        ],
+        "Native messaging host (repin)",
+    )
+    print("Reload the extension in chrome://extensions so it reconnects.")
+    return 0
+
+
 def main(argv: list[str]) -> int:
     dry_run = "--dry-run" in argv
+    no_browser = "--no-browser" in argv or dry_run
 
     if os.name != "nt":
         print(
@@ -87,25 +227,22 @@ def main(argv: list[str]) -> int:
         skill.append("--dry-run")
     run(skill, "Claude Code skills")
 
+    extension = ROOT / "extension"
     if dry_run:
+        answer = resolve(extension)
+        print(f"\nWould use extension id {answer['id']} (source: {answer['source']}).")
+        print("Would open chrome://extensions and wait for the extension to load.")
         print("\nDry run. Nothing was changed.")
         return 0
 
-    extension = ROOT / "extension"
+    install_extension(extension, no_browser)
+
     print(
         f"""
-=== Two steps left, and both need your hands ===
+=== One step left ===
 
-1. Load the extension. Open chrome://extensions, turn on Developer mode,
-   click Load unpacked, and choose:
-
-       {extension}
-
-   If it is already loaded, click its reload button instead. Then open the
-   side panel: a green dot means the companion answered.
-
-2. Restart Claude Code. Slash commands register at startup, so /webcall:*
-   appears in the next session, not this one.
+Restart Claude Code. Slash commands register at startup, so /webcall:* appears
+in the next session, not this one.
 
 Then run /webcall:init once. It rechecks everything above and finishes with a
 live smoke test it invents on the spot, so a green dot is not the last word.

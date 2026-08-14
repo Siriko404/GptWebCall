@@ -29,6 +29,7 @@ import hashlib
 import json
 import os
 import sys
+import time
 from pathlib import Path
 
 ID_PATTERN = "abcdefghijklmnop"
@@ -79,6 +80,31 @@ def loaded_extension_id(directory: Path, user_data: Path | None = None) -> str |
                 if isinstance(where, str) and where.casefold() == target:
                     return str(extension_id)
     return None
+
+
+def wait_for_extension(
+    directory: Path, timeout: float = 300.0, poll: float = 2.0
+) -> str | None:
+    """Block until Chrome reports this directory as a loaded extension.
+
+    Loading an unpacked extension is the one step of the install a machine
+    cannot perform. Chrome removed `--load-extension` from stable, and writing
+    into a profile's preferences by hand defeats the HMAC that protects them, so
+    a person clicks Load unpacked. Verified against Chrome 151: launching with
+    `--load-extension` on a fresh profile leaves the extension absent.
+
+    Waiting is not the same as assuming. When this returns an id, Chrome has
+    recorded the directory itself, which is the difference between an installer
+    that says "now go and click" and one that knows whether the click happened.
+    """
+    deadline = time.monotonic() + timeout
+    while True:
+        found = loaded_extension_id(directory)
+        if found:
+            return found
+        if time.monotonic() >= deadline:
+            return None
+        time.sleep(poll)
 
 
 def resolve(directory: Path, explicit: str | None = None) -> dict[str, str]:

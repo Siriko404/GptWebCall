@@ -2,6 +2,16 @@
 
 Hand one bounded task from a coding-agent session to ChatGPT Web, and get back files you can verify.
 
+> **Installing this?** Give Claude Code this repository's link and say *"install this"*. It runs everything below.
+>
+> ```powershell
+> git clone https://github.com/Siriko404/GptWebCall.git "$HOME\GptWebCall"
+> cd "$HOME\GptWebCall"
+> python scripts/setup.py
+> ```
+>
+> That builds and registers the native host, registers the `/webcall:*` skills, opens `chrome://extensions` with the extension folder already on your clipboard, waits for Chrome to load it, and checks that what Chrome loaded matches what it pinned. Then restart Claude Code and run `/webcall:init` once. Full detail in [Install](#install).
+
 A coding agent — Claude Code, Codex — is good at knowing your project and bad at being a second opinion on it. This is the bridge: the agent packages a task, you send it in your own browser, and the companion checks what comes back against what the response claimed it sent.
 
 **You stay in the loop by construction.** The extension has no way to send a message. It fills a file chooser *you* opened, then detaches. It never reads the response page.
@@ -40,25 +50,29 @@ macOS and Linux are not supported. Some Python is portable, but the installer, t
 
 ## Install
 
-**Hand this file to Claude Code and say "install this".** Claude runs everything below. Two steps need your hands, and only because nothing else can do them: Chrome has no supported way to let a script load an unpacked extension, and slash commands register when Claude Code starts.
+**Give Claude Code this repository's link and say "install this".** It reads this file and runs the whole thing. You click twice and restart once; everything else is done for you.
 
-**1. Clone somewhere permanent, then run one command.** The generated host manifest stores absolute paths, so moving the repository afterwards means installing again. Not a temporary directory.
+**1. Clone and run one command.** Clone somewhere permanent — the generated host manifest stores absolute paths, so moving the repository afterwards means installing again.
 
 ```powershell
-git clone https://github.com/Siriko404/GptWebCall.git
-cd GptWebCall
+git clone https://github.com/Siriko404/GptWebCall.git "$HOME\GptWebCall"
+cd "$HOME\GptWebCall"
 python scripts/setup.py
 ```
 
-That checks every prerequisite before touching anything, builds the Go launcher, works out the extension's ID, registers the native-messaging host under `HKCU`, re-reads what it wrote, and registers the `webcall` skills with Claude Code. `--dry-run` prints the plan and changes nothing.
+It checks every prerequisite before touching anything and names the missing one; builds the Go launcher; works out the extension's ID; registers the native-messaging host under `HKCU` and re-reads what it wrote; registers the `webcall` skills with Claude Code. `--dry-run` prints the plan and changes nothing.
 
-You never copy an extension ID. Chrome derives it from where the directory sits on disk, so the installer reads it from Chrome when the extension is already loaded and computes it when it is not — which is also why the host can be registered before Chrome has ever seen it.
+**2. It hands you the one click nothing can automate.** Chrome removed `--load-extension` from stable and a profile's preferences are signed against being written by hand, so the folder must be chosen in the picker. The installer makes that as small as it goes: it opens `chrome://extensions`, puts the extension's path on your clipboard, and waits.
 
-**2. Load the extension** — *your hands*. `chrome://extensions` → Developer mode → **Load unpacked** → pick the `extension` folder the installer prints. Open the side panel: a green dot means the companion answered.
+> Developer mode → **Load unpacked** → paste the path → choose the folder.
 
-**3. Restart Claude Code** — *your hands*. Then `/webcall:` autocompletes.
+Then it carries on by itself: it watches Chrome's own profile data until the extension appears, reads back the ID Chrome gave it, and compares that against the ID the native host was pinned to — repinning without asking if they differ. You never read or type a 32-character string.
+
+**3. Restart Claude Code.** Slash commands register at startup, so `/webcall:*` appears in the next session, not the one that installed it.
 
 **4. Run `/webcall:init` once.** It rechecks all of the above, runs the three test suites, and finishes with a live smoke test it invents on the spot rather than replaying a fixture — so a green dot is not the last word. It refuses to report success on a failing suite, a failed installer postflight, an extension ID Chrome disagrees with, or a failed smoke test.
+
+Rerunning `setup.py` is safe at any point: it re-checks, re-registers, and undoes nothing.
 
 If `/webcall:` is still missing after the restart, type these two lines and restart again:
 

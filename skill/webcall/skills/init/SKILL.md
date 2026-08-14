@@ -17,10 +17,14 @@ Read [OPERATING_CORE](../../references/OPERATING_CORE.md) first. Read
 2. **Confirm the host is supported.** Windows, Chrome 125+, Python 3.10+,
    Go 1.24+, PowerShell. macOS and Linux are not supported. Node is needed only
    to run the extension's tests. `[README.md "Requirements"]`
-3. **If there is no checkout, clone to somewhere permanent.** Use a target the
-   user names, otherwise `$HOME\GptWebCall` if free. Never a temporary
-   directory: the generated host manifest stores absolute paths, and moving the
-   repository means installing again. `[README.md "Install"]`
+3. **If there is no checkout, clone to somewhere permanent** without asking. Use
+   a target the user names, otherwise `$HOME\GptWebCall` if free. Never a
+   temporary directory: the generated host manifest stores absolute paths, and
+   moving the repository means installing again. `[README.md "Install"]`
+
+   ```powershell
+   git clone https://github.com/Siriko404/GptWebCall.git "$HOME\GptWebCall"
+   ```
 4. **Run the tests before writing any system state.**
 
    ```powershell
@@ -31,35 +35,35 @@ Read [OPERATING_CORE](../../references/OPERATING_CORE.md) first. Read
 
    If a suite that can run fails, stop and report the exact command. Node being
    absent is a gap in verification, not a blocker to installing.
-5. **Install both halves with one command.**
+5. **Install everything with one command.** Let it run; it is interactive by
+   design and waits for the operator's one click.
 
    ```powershell
    python scripts/setup.py
    ```
 
-   It registers the native-messaging host and the skills. Every prerequisite is
-   checked before anything is written, the Go launcher is built, the host
-   manifest and `HKCU` key are written and then re-read. `--dry-run` shows the
-   plan and changes nothing.
+   It registers the native-messaging host and the skills, then opens
+   `chrome://extensions`, puts the extension folder on the clipboard, waits for
+   Chrome to record the extension, reads back the id Chrome gave it, and repins
+   the host if that disagrees with what was pinned. `--dry-run` shows the plan;
+   `--no-browser` skips opening Chrome and waiting.
 
-   **Never ask the operator for the extension ID.** It is derived from the
-   extension's path, read from Chrome's own profile data when the extension is
-   already loaded, and reported either way. `[scripts/extension_id.py]`
-6. **If it warns that Chrome's download directory differs** from the companion's
+   **Never ask the operator for the extension ID, and never ask them to read one
+   off `chrome://extensions`.** It is derived from the extension's path and read
+   from Chrome's own profile data. `[scripts/extension_id.py]`
+6. **Tell the operator the one click, while it waits.** Developer mode → **Load
+   unpacked** → paste the path (already on their clipboard) → choose the folder.
+   If the extension is already loaded, reloading it is the equivalent. This is
+   the only step a machine cannot do: Chrome removed `--load-extension` from
+   stable and a profile's preferences are signed against hand editing.
+7. **If it warns that Chrome's download directory differs** from the companion's
    default, set exactly the `GPTWEBCALL_DOWNLOADS_DIR` value it prints, then
    restart Chrome.
-7. **Ask the operator for the two steps nothing else can do.** Loading the
-   unpacked extension from `<root>\extension` in `chrome://extensions` — or
-   reloading it if it is already there — and restarting Claude Code if the
-   skills were registered in this session.
-8. **Confirm the pinned ID against Chrome, then the side panel.** Rerun
-   `python scripts/extension_id.py`: once the extension is loaded, `source`
-   becomes `chrome`, and that id must equal the one in
-   `native-host\com.sina.gptwebcall.json`. If it does not, rerun the installer
-   with `-ExtensionId` and the value Chrome reports. Then the side panel: a
-   green dot means the companion answered the native `health` message. If it
-   says unavailable, reload the extension before reinstalling — a stale service
-   worker is the common cause.
+8. **Check the side panel.** A green dot means the companion answered the native
+   `health` message. If it says unavailable, reload the extension before
+   reinstalling — a stale service worker is the common cause. If the id still
+   disagrees, `python scripts/extension_id.py` reports what Chrome has and
+   `setup.py` repins from it.
 9. **Run the improvised smoke test** in
    [SMOKE_TEST](../../references/SMOKE_TEST.md). Do not substitute anything from
    `tests/e2e/`: `README.md` records that it encodes an older request contract
