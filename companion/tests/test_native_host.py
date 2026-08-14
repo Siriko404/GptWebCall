@@ -120,15 +120,18 @@ class NativeHostTests(unittest.TestCase):
         )
 
         self.assertEqual(result["active"]["tab_id"], 42)
-        # Only the prompt and the one input archive are ever uploaded, however
-        # many files went into that archive.
+        # One archive is uploaded, however many files went into it.
         self.assertEqual(
             [Path(path).name for path in result["request_paths"]],
-            ["PROMPT_2026-07-14_193000.md", "native_fixture_inputs.zip"],
+            ["native_fixture_inputs.zip"],
         )
         self.assertTrue(
             all(Path(path).parent.name == "request" for path in result["request_paths"])
         )
+        # Sent bare, an archive gets a model asking what to do with it. Go
+        # carries the line the panel types so that cannot happen.
+        self.assertIn("native_fixture_inputs.zip", result["launch_prompt"])
+        self.assertIn("000_READ_ME_FIRST.md", result["launch_prompt"])
 
     def test_done_is_idempotent_after_active_state_is_cleared(self):
         dispatch(

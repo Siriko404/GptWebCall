@@ -91,18 +91,26 @@ made is a hypothesis to test, not a premise to confirm.
 2. Preparation requires `WEB_REVIEW_REQUEST.json`, `WEB_RESPONSE_SCHEMA.json`, a
    non-empty `input_files`, a request ID, a `.json` expected main name, and
    prompt text. `[companion/core.py]`
-3. Exactly two files go up: a `PROMPT_*.md` the companion generates, and one
-   deterministic inputs ZIP it builds. `expected_artifacts` is optional; when
-   present it is exactly one `.zip`. `[companion/core.py; WEB_CALL_PROTOCOL.md
-   "Two files up, two files down"]`
-4. If a call produces extra files, require one outputs ZIP and put every extra
+3. **Exactly one file goes up: the deterministic inputs ZIP.** ChatGPT refuses
+   loose `.md` attachments, so the prompt travels inside the archive as
+   `000_READ_ME_FIRST.md` — first in it, because the bundle is written in
+   casefolded name order. Nothing else is uploaded, and there is no flag to
+   turn this off. `expected_artifacts` is optional; when present it is exactly
+   one `.zip`. `[companion/core.py; WEB_CALL_PROTOCOL.md "One zip up"]`
+4. An archive sent with no message gets a model asking what to do with it. The
+   companion writes a one-line launch prompt naming the archive and
+   `000_READ_ME_FIRST.md`; the panel types it into the composer at Go and stops
+   there. If typing fails the panel offers the text to copy. The operator still
+   clicks Send. `[companion/core.py launch_prompt;
+   extension/service_worker.js typeLaunchPrompt]`
+5. If a call produces extra files, require one outputs ZIP and put every extra
    file inside it. Never a third loose download.
-5. In the main response, `delivery` lists only the downloadable filenames.
+6. In the main response, `delivery` lists only the downloadable filenames.
    `artifacts_manifest` lists every created **additional** file, archive members
    included — but never the main JSON itself. The parser reserves the main
    filename and rejects a manifest that lists it.
    `[companion/downloads.py:663-667]`
-6. Manifest-declared archive members must be **plain filenames**. The archive
+7. Manifest-declared archive members must be **plain filenames**. The archive
    index keys on basename and the first duplicate wins, so members that must be
    individually hash-verified need unique basenames, and
    `artifacts_manifest.filename` must not contain a path separator.

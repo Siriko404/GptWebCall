@@ -13,6 +13,12 @@ import { CHATGPT_URL, chooseTargetTab } from "./lib/target.js";
 
 
 const NATIVE_HOST = "com.sina.gptwebcall";
+/* A newly created conversation renders its composer some time after the tab
+ * exists, so the launch line is retried rather than attempted once. Twenty
+ * attempts at 500ms is ten seconds, past which a page that has not produced a
+ * composer is a page worth telling the operator about. */
+const COMPOSER_POLL_MS = 500;
+const COMPOSER_ATTEMPTS_NEW_TAB = 20;
 
 
 chrome.runtime.onInstalled.addListener(() => {
@@ -177,14 +183,20 @@ async function beginGo(exchangeId, mode) {
       download_baseline: existingDownloads.map((item) => item.id),
     });
     started = true;
-    const handoff = handoffFrom(
-      result,
-      tab.id,
-      exchangeId,
-      mode === "current"
-        ? "Delivering into the open conversation. Click Attach files there."
-        : "Click Attach files in ChatGPT.",
-    );
+    const launch = await typeLaunchPrompt(tab.id, result.launch_prompt, mode);
+    const handoff = {
+      ...handoffFrom(
+        result,
+        tab.id,
+        exchangeId,
+        launch.message
+          ?? (mode === "current"
+            ? "Delivering into the open conversation. Click Attach files there."
+            : "Click Attach files in ChatGPT."),
+      ),
+      launchPrompt: result.launch_prompt ?? null,
+      launchInserted: launch.inserted,
+    };
     await writeHandoff(handoff);
     await armTab(tab.id);
     return handoff;
@@ -195,6 +207,34 @@ async function beginGo(exchangeId, mode) {
       await nativeCommand("call.stop", { exchange_id: exchangeId }).catch(() => undefined);
     }
     throw error;
+  }
+}
+
+
+/* One archive goes up and the prompt is inside it, so the message ChatGPT
+ * receives would otherwise be an attachment with nothing said about it — which
+ * gets a model asking what to do rather than doing it. The companion writes the
+ * line; this types it and stops. The operator still reviews it and clicks Send.
+ *
+ * Failing to type it is not a failed call. The text goes to the panel with a
+ * copy button instead, because the operator can paste it and carry on, and
+ * aborting a call that has already started monitoring would cost more.
+ */
+async function typeLaunchPrompt(tabId, text, mode) {
+  try {
+    await insertPromptIntoComposer(tabId, text, {
+      attempts: mode === "current" ? 1 : COMPOSER_ATTEMPTS_NEW_TAB,
+    });
+    return {
+      inserted: true,
+      message: "Instruction typed into ChatGPT. Click Attach files, then Send.",
+    };
+  } catch (error) {
+    return {
+      inserted: false,
+      message: "Copy the instruction below into ChatGPT, then click Attach files "
+        + `and Send. (${error.message})`,
+    };
   }
 }
 
@@ -219,14 +259,20 @@ async function resumeCall(exchangeId, mode) {
   }
   try {
     const result = await nativeCommand("call.resume", payload);
-    const handoff = handoffFrom(
-      result,
-      tab.id,
-      result.active.exchange_id,
-      mode === "current"
-        ? "Resumed into the open conversation. Click Attach files there."
-        : "Resumed. Click Attach files in ChatGPT.",
-    );
+    const launch = await typeLaunchPrompt(tab.id, result.launch_prompt, mode);
+    const handoff = {
+      ...handoffFrom(
+        result,
+        tab.id,
+        result.active.exchange_id,
+        launch.message
+          ?? (mode === "current"
+            ? "Resumed into the open conversation. Click Attach files there."
+            : "Resumed. Click Attach files in ChatGPT."),
+      ),
+      launchPrompt: result.launch_prompt ?? null,
+      launchInserted: launch.inserted,
+    };
     await writeHandoff(handoff);
     await armTab(tab.id);
     return handoff;
@@ -375,30 +421,48 @@ async function openRepairRound(exchangeId) {
 }
 
 
-async function insertPromptIntoComposer(tabId, text) {
+/* Types text into ChatGPT's composer and stops there. It never sends.
+ *
+ * This attaches and detaches its own debugger session, so it must not run while
+ * a tab is armed: the second attach throws, and the detach in `finally` would
+ * strip the file-chooser interception off a tab that was waiting for it. Both
+ * callers run it before arming.
+ *
+ * `attempts` exists for a conversation that has just been created — the tab
+ * exists before the page does, and the composer appears later still.
+ */
+async function insertPromptIntoComposer(tabId, text, { attempts = 1 } = {}) {
+  if (typeof text !== "string" || !text.trim()) {
+    throw new Error("no prompt text to insert");
+  }
   await chrome.debugger.attach({ tabId }, "1.3");
   try {
     await chrome.debugger.sendCommand({ tabId }, "Runtime.enable", {});
-    const focused = await chrome.debugger.sendCommand(
-      { tabId },
-      "Runtime.evaluate",
-      {
-        expression: `(() => {
-          const composer = document.querySelector("#prompt-textarea")
-            ?? document.querySelector("div[contenteditable='true']")
-            ?? document.querySelector("textarea");
-          if (!composer) { return false; }
-          composer.focus();
-          return true;
-        })()`,
-        returnByValue: true,
-      },
-    );
-    if (focused?.result?.value !== true) {
-      throw new Error("the ChatGPT composer was not found on the bound tab");
+    for (let attempt = 0; attempt < attempts; attempt += 1) {
+      const focused = await chrome.debugger.sendCommand(
+        { tabId },
+        "Runtime.evaluate",
+        {
+          expression: `(() => {
+            const composer = document.querySelector("#prompt-textarea")
+              ?? document.querySelector("div[contenteditable='true']")
+              ?? document.querySelector("textarea");
+            if (!composer) { return false; }
+            composer.focus();
+            return true;
+          })()`,
+          returnByValue: true,
+        },
+      );
+      if (focused?.result?.value === true) {
+        await chrome.debugger.sendCommand({ tabId }, "Input.insertText", { text });
+        return true;
+      }
+      if (attempt + 1 < attempts) {
+        await new Promise((resolve) => setTimeout(resolve, COMPOSER_POLL_MS));
+      }
     }
-    await chrome.debugger.sendCommand({ tabId }, "Input.insertText", { text });
-    return true;
+    throw new Error("the ChatGPT composer was not found on the bound tab");
   } finally {
     await safeDetach(tabId);
   }

@@ -41,15 +41,21 @@ work. That is an owner requirement, not a preference.
 ```
 
 Before any browser action confirm: state `PREPARED`, request ID matches, the
-expected filenames are the fresh ones, and `attach_files` is exactly the
-generated prompt plus the inputs ZIP. `show` is the pre-send check — not
-`validate`.
+expected filenames are the fresh ones, and `attach_files` is exactly one file —
+the inputs ZIP, with the prompt inside it as `000_READ_ME_FIRST.md`. `show` is
+the pre-send check — not `validate`.
 
 ## 3. Operator round trip
 
 Ask the operator: side panel → destination set to **Send in a new
 conversation** → **Go** → ChatGPT's **Attach files** → **Send** → download both
-named files → **Done and validate**. The extension attaches; it never sends.
+named files → **Done and validate**. The extension attaches and types the launch
+line; it never sends.
+
+Watch the composer at Go. One line naming the archive and `000_READ_ME_FIRST.md`
+should appear in it by itself. If the panel shows that line with a copy button
+instead, typing it failed — paste it, and record that as a defect of this run
+even if the rest passes.
 
 Naming the destination matters even in the default case: the control persists
 across browser restarts, so a panel left on *Send in the conversation I am in*

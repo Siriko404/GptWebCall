@@ -76,16 +76,26 @@ chrome.storage.local.get("goMode").then((stored) => {
 });
 
 goButton.addEventListener("click", () =>
-  run(() => send({ type: "GO", exchangeId: select.value, mode: goMode.value })),
+  run(async () => {
+    const handoff = await send({
+      type: "GO",
+      exchangeId: select.value,
+      mode: goMode.value,
+    });
+    showLaunchPrompt(handoff);
+  }),
 );
 resumeButton.addEventListener("click", () =>
-  run(() => send({ type: "RESUME", mode: goMode.value })),
+  run(async () => {
+    const handoff = await send({ type: "RESUME", mode: goMode.value });
+    showLaunchPrompt(handoff);
+  }),
 );
 
 repairButton.addEventListener("click", () =>
   run(async () => {
     const handoff = await send({ type: "REPAIR", exchangeId: repairTarget });
-    showRepairPrompt(handoff);
+    showPromptToCopy(handoff?.repairPrompt);
   }),
 );
 
@@ -367,11 +377,25 @@ function renderResult(report) {
   resultBody.append(list);
 }
 
-function showRepairPrompt(handoff) {
-  if (!handoff?.repairPrompt) {
+/* Only when typing it failed. When it worked the line is already in the
+ * composer, and showing it again would invite the operator to paste a second
+ * copy underneath the first. */
+function showLaunchPrompt(handoff) {
+  if (!handoff || handoff.launchInserted) {
     return;
   }
-  repairPrompt.textContent = handoff.repairPrompt;
+  showPromptToCopy(handoff.launchPrompt);
+}
+
+
+/* The card that hands the operator text to paste. It serves a correction round
+ * and a launch line that could not be typed: same need either way, which is a
+ * prompt the extension has but the page did not take. */
+function showPromptToCopy(text) {
+  if (typeof text !== "string" || !text) {
+    return;
+  }
+  repairPrompt.textContent = text;
   repairCard.hidden = false;
   copyRepairButton.textContent = "Copy";
 }

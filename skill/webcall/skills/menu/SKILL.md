@@ -67,8 +67,9 @@ names. Never on a running call. If a response has landed, refuse unless the
 operator explicitly chooses to discard it, and only then pass `--force`.
 
 ### `manual <id>`
-For a `PREPARED` exchange: `show` it, upload exactly the two files in
-`attach_files`, let the operator send and download, copy the returned files into
+For a `PREPARED` exchange: `show` it, upload the one archive in `attach_files`
+with a typed line telling ChatGPT to open it and read `000_READ_ME_FIRST.md`
+first, let the operator send and download, copy the returned files into
 `response\` under their exact expected names, then `validate --exchange <id>`.
 For an `ACTIVE` exchange with files already placed, `done --exchange <id>`.
 Never silently overwrite different bytes.

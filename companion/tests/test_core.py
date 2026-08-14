@@ -57,7 +57,7 @@ class CoreTests(unittest.TestCase):
             ],
         }
 
-    def test_prepare_call_uses_one_timestamp_for_folder_and_prompt(self):
+    def test_prepare_call_uses_one_timestamp_for_the_folder(self):
         manifest = prepare_call(self.root, self.spec(), self.now)
 
         self.assertEqual(
@@ -69,7 +69,7 @@ class CoreTests(unittest.TestCase):
         self.assertEqual(
             names,
             [
-                "PROMPT_2026-07-14_151500.md",
+                "000_READ_ME_FIRST.md",
                 "WEB_REVIEW_REQUEST.json",
                 "WEB_RESPONSE_SCHEMA.json",
                 "context.txt",

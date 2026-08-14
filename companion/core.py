@@ -16,6 +16,11 @@ from companion.lock import state_lock
 
 
 _TIMESTAMP = "%Y-%m-%d_%H%M%S"
+# The prompt's name inside the archive. The bundle is written in casefolded name
+# order, so the leading 000 puts it first in the archive and first in any listing
+# a model prints - inside an archive the name is the only thing telling a model
+# which file governs.
+PROMPT_IN_BUNDLE_NAME = "000_READ_ME_FIRST.md"
 _RESERVED_NAMES = {
     "CON",
     "PRN",
@@ -49,17 +54,19 @@ def prepare_call(root: Path, spec: dict[str, Any], now: datetime) -> dict[str, A
         raise ValueError("input_files must be a non-empty list")
     expected_artifacts = _expected_artifact_names(spec)
 
-    # ChatGPT has refused loose .md attachments, which strands a call whose
-    # instructions live in one. Opting in moves the prompt inside the archive so
-    # a single .zip goes up. It has to be unmissable once it is in there: the
-    # name says what it is, and the bundle is written in casefolded name order,
-    # so a leading 000 puts it first in the archive as well as first in any
-    # listing. Off by default - the two-file shape is still the contract.
-    prompt_in_bundle = bool(spec.get("prompt_in_bundle", False))
+    # One zip goes up, and nothing else. ChatGPT now refuses loose .md
+    # attachments outright, so a prompt uploaded beside the archive strands the
+    # call it was meant to govern. The prompt therefore lives inside the archive
+    # under PROMPT_IN_BUNDLE_NAME.
+    if spec.get("prompt_in_bundle") is False:
+        raise ValueError(
+            "prompt_in_bundle cannot be turned off: exactly one zip goes up, "
+            "because ChatGPT refuses loose .md attachments"
+        )
 
     timestamp = now.strftime(_TIMESTAMP)
     exchange_id = f"{timestamp}_{slug}"
-    prompt_name = "000_READ_ME_FIRST.md" if prompt_in_bundle else f"PROMPT_{timestamp}.md"
+    prompt_name = PROMPT_IN_BUNDLE_NAME
     bundle_name = f"{slug}_inputs.zip"
     calls_dir = root / "calls"
     state_dir = root / "state"
@@ -119,13 +126,11 @@ def prepare_call(root: Path, spec: dict[str, Any], now: datetime) -> dict[str, A
             _copy_verified(source, target)
             request_files.append(_file_record(target))
 
-        # Everything except the prompt travels as one archive. The individual
+        # Everything travels as one archive, prompt included. The individual
         # files stay on disk beside it: they are the provenance record and the
         # thing whose hashes are checked, while the archive is what is uploaded.
         bundle_path = request_dir / bundle_name
-        bundled = [name for _, name in prepared_inputs]
-        if prompt_in_bundle:
-            bundled.append(prompt_name)
+        bundled = [name for _, name in prepared_inputs] + [prompt_name]
         _write_bundle(bundle_path, bundled, request_dir)
         request_files.append(_file_record(bundle_path))
 
@@ -148,7 +153,7 @@ def prepare_call(root: Path, spec: dict[str, Any], now: datetime) -> dict[str, A
             "expected_main_json": expected_main,
             "expected_artifacts": expected_artifacts,
             "request_files": request_files,
-            "attach_files": [bundle_name] if prompt_in_bundle else [prompt_name, bundle_name],
+            "attach_files": [bundle_name],
             "response_dir": "response",
         }
         _write_json_atomic(staging / "EXCHANGE_MANIFEST.json", manifest)
@@ -625,6 +630,35 @@ def request_paths(root: Path, exchange_id: str) -> list[str]:
             raise ValueError(f"request file changed after preparation: {name}")
         paths.append(str(path))
     return paths
+
+
+def launch_prompt(root: Path, exchange_id: str) -> str:
+    """The line the operator sends with the archive.
+
+    One zip goes up and the prompt is inside it, so the message ChatGPT receives
+    carries no instructions of its own. Sent bare, an archive gets a model
+    asking what to do with it, and the call stalls before it has begun. This is
+    the smallest text that turns the attachment into an instruction: open it,
+    read the governing file first, follow it.
+
+    It is deliberately about routing and nothing else. Anything describing the
+    work belongs in the prompt inside the archive, where it is hashed with the
+    rest of the request instead of typed into a composer.
+    """
+    exchange_dir = _exchange_dir(Path(root).resolve(), exchange_id)
+    manifest = _read_json_object(
+        exchange_dir / "EXCHANGE_MANIFEST.json", "EXCHANGE_MANIFEST"
+    )
+    attach = manifest.get("attach_files") or []
+    if len(attach) != 1:
+        raise ValueError("exactly one file is uploaded, so exactly one is named")
+    archive = _safe_name(str(attach[0]), "attached archive name")
+    return (
+        f"Open the attached archive {archive} now. Read {PROMPT_IN_BUNDLE_NAME} "
+        "inside it first, then follow it exactly. Every file you need is in the "
+        "archive; do not ask what to do with it, and do not reply with anything "
+        "except the downloads it asks for."
+    )
 
 
 def _subject_slug(subject: str) -> str:

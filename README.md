@@ -117,7 +117,7 @@ When `manifest_verified` is `false`, the responder's own manifest was malformed,
 
 ## Without the extension
 
-The manual path is permanent, not a fallback that rots. Upload the two files a call names in `attach_files`, drop the returned files into its `response/` directory, and run `validate --exchange <id>`. See [`docs/MANUAL_FALLBACK.md`](docs/MANUAL_FALLBACK.md).
+The manual path is permanent, not a fallback that rots. Upload the one archive a call names in `attach_files`, drop the returned files into its `response/` directory, and run `validate --exchange <id>`. See [`docs/MANUAL_FALLBACK.md`](docs/MANUAL_FALLBACK.md).
 
 ## Known limits
 

@@ -12,6 +12,7 @@ from companion.core import (
     list_ready_calls,
     load_active_calls,
     call_progress,
+    launch_prompt,
     list_recent_calls,
     request_paths,
     resume_call,
@@ -119,6 +120,10 @@ def dispatch(root: Path, message: dict[str, Any]) -> dict[str, Any] | list[Any] 
         return {
             "active": active,
             "request_paths": request_paths(root, exchange_id),
+            # An archive sent with no message gets a model asking what to do
+            # with it. The panel types this line into the composer; the operator
+            # still reviews it and clicks Send.
+            "launch_prompt": launch_prompt(root, exchange_id),
         }
     if command == "call.resume":
         _allow_keys(payload, {"tab_id", "download_baseline"}, {"exchange_id"})
@@ -131,6 +136,7 @@ def dispatch(root: Path, message: dict[str, Any]) -> dict[str, Any] | list[Any] 
         return {
             "active": active,
             "request_paths": request_paths(root, active["exchange_id"]),
+            "launch_prompt": launch_prompt(root, active["exchange_id"]),
         }
     if command == "download.completed":
         allowed = {

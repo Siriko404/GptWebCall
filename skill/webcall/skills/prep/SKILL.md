@@ -72,18 +72,18 @@ model that has already been argued with.
    the parser rejects as self-listing. Members that must be hash-verified need
    unique plain basenames with no path separators.
 8. **Write the spec.** Non-empty `input_files`, the expected main JSON,
-   optionally one outputs ZIP, and `prompt_text` that says the two attached
-   files are the whole package, requires the inputs ZIP to be extracted, and —
-   when thoroughness is the point — requires a file-by-file inventory with byte
-   sizes before any analysis.
+   optionally one outputs ZIP, and `prompt_text` that says the one attached
+   archive is the whole package, requires it to be extracted, and — when
+   thoroughness is the point — requires a file-by-file inventory with byte sizes
+   before any analysis.
 
-   **If ChatGPT refuses the loose `.md` prompt**, set `"prompt_in_bundle": true`
-   in the spec and prepare again. The prompt is then packed into the archive as
-   `000_READ_ME_FIRST.md`, `attach_files` becomes that one `.zip`, and the
-   operator attaches a single file. Leave it off otherwise: a natively attached
-   prompt is read directly, while an archived one has to be extracted first and
-   a model that extracts carelessly skims. Turn it on when the alternative is a
-   call that cannot be sent at all — never as a default.
+   **One zip goes up and nothing else.** ChatGPT refuses loose `.md`
+   attachments, so the companion packs your `prompt_text` into the archive as
+   `000_READ_ME_FIRST.md`, first in it. There is no flag; a spec setting
+   `"prompt_in_bundle": false` is refused at preparation. Since the prompt is
+   read after an extraction rather than natively, write it expecting a model
+   that may skim: state the deliverables in the first lines, and require the
+   inventory.
 9. **Prepare, then inspect.**
 
    ```powershell
@@ -92,8 +92,8 @@ model that has already been argued with.
    ```
 
    Confirm: state `PREPARED`, the request ID, the expected names, `attach_files`
-   exactly the prompt plus the inputs ZIP, and the packaged input names matching
-   intent. Do not run `validate` — it refuses an unanswered call by design.
+   exactly the one inputs ZIP, and the packaged input names matching intent. Do
+   not run `validate` — it refuses an unanswered call by design.
 10. **Hand off.** Give the exchange ID and one next action: open the side panel,
     set the destination to match the mode you prepared — *Send in a new
     conversation* for bounded, *Send in the conversation I am in* for conductor,
@@ -118,5 +118,5 @@ model that has already been argued with.
 ## Proof it worked
 
 `prepare` returns `ok: true`; `show` reports `PREPARED`, bound to the intended
-request ID, with unique expected deliverables; `attach_files` names exactly two
-frozen files; and `active` still shows no call started.
+request ID, with unique expected deliverables; `attach_files` names exactly one
+frozen archive; and `active` still shows no call started.
