@@ -53,12 +53,15 @@ claude --plugin-dir "<path-to-this-repo>\skill\webcall"
 
 ## Codex and other hosts
 
-`webcall/skills/<name>/SKILL.md` are plain Agent Skills — frontmatter plus a
-markdown body — so any host that loads skill folders can use them unchanged.
+`webcall/skills/<name>/` are plain Agent Skills — a folder, a `SKILL.md`,
+frontmatter plus a markdown body — so any host that loads skill folders loads
+these unchanged. Install them as skills there too; do not paste their contents
+into a session, which puts a second entry point beside the skills and is what
+this replaced.
 
-Codex has no verified `/plugin:skill` spelling, so the exact three names above
-are guaranteed on Claude Code only. `webcall/adapters/codex/AGENTS.md` exposes
-the same three workflows as instructions.
+The exact install command is verified on Claude Code only.
+`webcall/adapters/codex/AGENTS.md` says what a host has to provide and what must
+stay true wherever they run.
 
 ## Layout
 
