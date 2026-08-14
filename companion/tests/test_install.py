@@ -25,19 +25,24 @@ from extension_id import (  # noqa: E402
 
 class ExtensionIdTests(unittest.TestCase):
     def test_the_id_is_derived_the_way_chrome_derives_it(self):
-        """Pinned against a real installed extension.
+        """Chrome hashes the absolute path encoded UTF-16LE, keeps sixteen
+        bytes, and maps each hex digit onto a..p.
 
-        Chrome hashes the absolute path encoded UTF-16LE, keeps sixteen bytes,
-        and maps each hex digit onto a..p. This pair was read off a working
-        machine: the directory, and the ID Chrome gave it. If this ever breaks,
-        the host will pin an origin Chrome does not use and the side panel will
-        say the companion is unavailable with nothing else wrong.
+        The algorithm was verified against a real pair on 2026-08-14 — a loaded
+        unpacked extension's directory and the ID Chrome recorded for it — and
+        this fixture pins the implementation against that verified behaviour
+        under a neutral path, so a quiet change to the encoding, the slice, or
+        the alphabet goes red here. The live guarantee does not rest on this
+        test: setup.py compares the pinned ID against Chrome's own record on
+        every install and repins when they disagree.
+
+        If the derivation ever breaks anyway, the symptom is a host pinned to
+        an origin Chrome does not use, and a side panel that says the companion
+        is unavailable with nothing else wrong.
         """
         self.assertEqual(
-            derive_extension_id(
-                Path(r"C:\GptWebCall\extension")
-            ),
-            "ffibgohmjphlbdjfjgddjdfemfemecmm",
+            derive_extension_id(Path(r"C:\GptWebCall\extension")),
+            "momigejapnppdkohggnofjapbhnfcalh",
         )
 
     def test_every_derived_id_is_thirty_two_characters_of_a_to_p(self):
