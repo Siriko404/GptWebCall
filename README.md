@@ -38,63 +38,46 @@ macOS and Linux are not supported. Some Python is portable, but the installer, t
 
 ## Install
 
-**Order matters.** Chrome derives an unpacked extension's ID from where it sits on disk, and the host manifest must pin that exact ID. So the extension is loaded first, and its ID is passed to the installer.
+**Hand this file to Claude Code and say "install this".** The three steps below are all it needs. Two of them require your hands and are marked; Claude cannot click in Chrome.
 
-**1. Clone somewhere you intend to keep it.** The generated host manifest contains an absolute path; moving the repository means installing again.
+**1. Clone somewhere permanent, and register the skills.** The generated host manifest stores an absolute path, so moving the repository afterwards means installing again — not a temporary directory.
 
 ```powershell
 git clone https://github.com/Siriko404/GptWebCall.git
 cd GptWebCall
+python scripts/install_skill.py
 ```
 
-**2. Run the tests.** If these fail, stop — installing will not help.
+That writes two keys into `~/.claude/settings.json` — the same two `/plugin marketplace add` and `/plugin install` write — and backs the file up first. `--dry-run` shows the change without making it.
 
-```powershell
-go test ./... -race -count=1
-python -m unittest discover -s companion/tests
-npm --prefix extension test
-```
+**2. Restart Claude Code.** Commands register at startup, so `/webcall:*` appears in the next session, not the one that installed it.
 
-**3. Load the extension.** In `chrome://extensions`: enable **Developer mode** → **Load unpacked** → select this repository's `extension` directory. Copy the 32-character ID Chrome shows.
-
-**4. Register the native host.**
-
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\install.ps1 -ExtensionId <the-32-character-id>
-```
-
-It checks every prerequisite before writing anything, then verifies what it wrote. Add `-WhatIf` to see the plan without changing your machine.
-
-**5. Reload the extension** in `chrome://extensions` and open its side panel. A green dot means the companion answered.
-
-If the panel says the companion is unavailable, reload the extension before reinstalling — a stale service worker is the common cause.
-
-## Use it
-
-Point your agent session at [`WEB_CALL_PROTOCOL.md`](WEB_CALL_PROTOCOL.md). That file is the complete operating contract: how to decide a task is worth a call, how to construct the request, what the response must contain, how validation reads, and how to recover. It is written to be handed to a fresh session with no other context.
-
-For Claude Code there is a shorter path. [`skill/`](skill/README.md) ships three commands — `/webcall:init`, `/webcall:prep`, `/webcall:menu` — that install the system, prepare a call, and cover everything else, loading the protocol only where it is needed. Inside Claude Code:
+If the commands are missing after the restart, type these two lines instead and restart again:
 
 ```text
 /plugin marketplace add <path-to-this-repo>\skill\webcall
 /plugin install webcall@webcall-local
 ```
 
-Restart Claude Code afterwards; commands register at startup.
+**3. Run `/webcall:init`.** It takes over from here: checks your prerequisites, runs the three test suites, walks you through the two steps that need hands — loading the unpacked extension in `chrome://extensions` and reading back its 32-character ID — registers the native host with that ID, and finishes by running a live smoke test it invents on the spot rather than replaying a fixture.
 
-The agent prepares a call:
+It refuses to report success on a failed suite, an unverified extension ID, a failed installer postflight, or a failed smoke test.
 
-```powershell
-.\gptwebcall.cmd list                          # what is ready
-.\gptwebcall.cmd prepare --spec C:\path\spec.json
-.\gptwebcall.cmd active                        # what is running
-```
+## Use it
 
-Then you drive it: **Go** → click ChatGPT's own **Attach files** → review what attached → **Send** → download each returned file → **Done and validate**.
+Everything runs through three commands.
+
+| | |
+|---|---|
+| `/webcall:init` | install, or recheck an install, and smoke-test it |
+| `/webcall:prep` | prepare one call: unbiased request, explicit file list, unique routing names, pre-send check |
+| `/webcall:menu` | everything else — status, health, finish, recover, repair, stop, delete, manual fallback, watch, local responder |
+
+Then you drive the browser half: **Go** → click ChatGPT's own **Attach files** → review what attached → **Send** → download each returned file → **Done and validate**. No skill does any of that for you, by design.
 
 Several calls can run at once, each bound to its own tab, as long as no two expect the same filename — attribution is by filename, because Chrome does not tell an extension which tab produced a download.
 
-Full command reference is in the protocol. `delete`, `stop`, `validate`, `defects`, and `repair` cover the recovery paths.
+[`WEB_CALL_PROTOCOL.md`](WEB_CALL_PROTOCOL.md) is the complete reference behind those commands — every rule, every command, every recovery path. It is not the operating surface: the skills are, and they cite it where it is needed. Read it to check a skill, or when operating by hand with the extension disabled.
 
 ### Everything lands on disk
 

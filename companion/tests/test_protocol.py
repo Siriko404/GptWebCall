@@ -8,7 +8,53 @@ class ProtocolTests(unittest.TestCase):
     def setUpClass(cls):
         cls.root = Path(__file__).resolve().parents[2]
 
-    def test_protocol_is_the_complete_global_entry_point(self):
+    def test_the_protocol_sends_an_agent_session_to_the_skills(self):
+        """The skills are the operating surface; this file is the reference.
+
+        A session that reads the protocol and drives `gptwebcall.cmd` itself has
+        to hold five hundred lines to act safely, and the parts it does not hold
+        are the ones that lose files. The protocol therefore has to say, in its
+        own opening, that it is not the way in.
+        """
+        protocol = (self.root / "WEB_CALL_PROTOCOL.md").read_text(encoding="utf-8")
+
+        self.assertIn("It is not the operating surface", protocol)
+        for command in ("/webcall:init", "/webcall:prep", "/webcall:menu"):
+            self.assertIn(command, protocol)
+        # The human's path out stays, and stays named as the exception.
+        self.assertIn("manual fallback below stays usable by hand", protocol)
+
+        readme = (self.root / "README.md").read_text(encoding="utf-8")
+        for command in ("/webcall:init", "/webcall:prep", "/webcall:menu"):
+            self.assertIn(command, readme)
+        # Teaching the CLI in the README puts a second front door beside the
+        # skills, which is exactly what this replaced.
+        self.assertNotIn(".\\gptwebcall.cmd prepare", readme)
+
+    def test_the_skill_covers_every_command_the_cli_exposes(self):
+        """A gap here is what pushes a session back to the raw CLI."""
+        menu = (
+            self.root / "skill" / "webcall" / "skills" / "menu" / "SKILL.md"
+        ).read_text(encoding="utf-8")
+        prep = (
+            self.root / "skill" / "webcall" / "skills" / "prep" / "SKILL.md"
+        ).read_text(encoding="utf-8")
+        covered = menu + prep
+        for command in (
+            "prepare",
+            "list",
+            "show",
+            "active",
+            "done",
+            "stop",
+            "delete",
+            "validate",
+            "defects",
+            "repair",
+        ):
+            self.assertIn(command, covered, command)
+
+    def test_protocol_is_the_complete_global_reference(self):
         protocol = (self.root / "WEB_CALL_PROTOCOL.md").read_text(encoding="utf-8")
 
         for required in (

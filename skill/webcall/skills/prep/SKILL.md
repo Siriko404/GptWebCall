@@ -76,6 +76,14 @@ model that has already been argued with.
    files are the whole package, requires the inputs ZIP to be extracted, and —
    when thoroughness is the point — requires a file-by-file inventory with byte
    sizes before any analysis.
+
+   **If ChatGPT refuses the loose `.md` prompt**, set `"prompt_in_bundle": true`
+   in the spec and prepare again. The prompt is then packed into the archive as
+   `000_READ_ME_FIRST.md`, `attach_files` becomes that one `.zip`, and the
+   operator attaches a single file. Leave it off otherwise: a natively attached
+   prompt is read directly, while an archived one has to be extracted first and
+   a model that extracts carelessly skims. Turn it on when the alternative is a
+   call that cannot be sent at all — never as a default.
 9. **Prepare, then inspect.**
 
    ```powershell

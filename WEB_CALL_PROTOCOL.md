@@ -2,11 +2,15 @@
 
 System root: the directory containing this file. Every path and command below is relative to it.
 
-This file is the complete operating contract for any Codex or Claude Code session using the installed GPT Web Call system. Read it before operating the system.
+This file is the complete reference for the installed GPT Web Call system: every rule, every command, every recovery path.
+
+**It is not the operating surface.** An agent session operates this system through the `webcall` skills and nothing else — `/webcall:init` installs it, `/webcall:prep` prepares a call, `/webcall:menu` covers every other action. Those skills carry what a session needs before its first action and cite this file for the rest, so nothing here has to be held in memory in order to act safely. If something you need is missing from a skill, add it there rather than routing around them. Installation is in `skill/README.md`.
+
+The exception is the human, not the agent. The manual fallback below stays usable by hand with the extension disabled and no skill loaded. That is recovery, and it is permanent.
 
 ## Fresh-session contract
 
-After reading this file, a new session must:
+These are the obligations the skills enforce. They are stated here so the contract has one authoritative home, and so a session can check a skill against them:
 
 1. Treat the directory containing this file as the system root and the filesystem there as operational authority.
 2. Read "RULE #1 OF PROMPT ENGINEERING: never bias the call" before writing any prompt, request or response schema.

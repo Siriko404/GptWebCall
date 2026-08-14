@@ -13,22 +13,39 @@ Nothing here fires on its own. All three carry
 `disable-model-invocation: true`, because they install software, register a
 native-messaging host, and spend live model interactions.
 
-## Install for Claude Code
+## Install
 
 The plugin ships inside this repository as its own local marketplace, so there
-is nothing to build or copy. Inside Claude Code:
+is nothing to build or copy. From the repository root:
+
+```powershell
+python scripts/install_skill.py
+```
+
+**Then restart Claude Code.** Commands register at startup; they do not appear
+in the session that installed them. After the restart, `/webcall:` autocompletes
+to `init`, `prep`, and `menu`.
+
+The script writes two keys into `~/.claude/settings.json` and nothing else — the
+same two that `/plugin marketplace add` and `/plugin install` write:
+
+```json
+"extraKnownMarketplaces": { "webcall-local": { "source": { "source": "directory", "path": "…/skill/webcall" } } },
+"enabledPlugins":         { "webcall@webcall-local": true }
+```
+
+It backs the file up first, preserves everything else, and does nothing when
+both keys are already correct. `--dry-run` shows the change without making it.
+
+**If the commands are still missing after a restart**, type these two lines and
+restart again:
 
 ```text
 /plugin marketplace add <path-to-this-repo>\skill\webcall
 /plugin install webcall@webcall-local
 ```
 
-**Then restart Claude Code.** Commands are registered at startup; they will not
-appear in the session that installed them.
-
-After the restart, `/webcall:` autocompletes to `init`, `prep`, and `menu`.
-
-To try it for one session without installing:
+To try it for one session without registering anything:
 
 ```powershell
 claude --plugin-dir "<path-to-this-repo>\skill\webcall"

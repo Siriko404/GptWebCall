@@ -32,6 +32,11 @@ message the extension sends. Also report anything stale: entries in
 `state/active/` with no matching `ACTIVE` manifest. With `smoke`, run
 [SMOKE_TEST](../../references/SMOKE_TEST.md).
 
+If the panel reports the companion unavailable, the first remedy is the panel's
+own **Reload extension** button, or a reload in `chrome://extensions` — a stale
+service worker is the common cause. Reinstalling is the second remedy, not the
+first, and it needs the extension ID again.
+
 ### `finish <id>`
 Prefer the side panel's **Done and validate** once the expected files have
 landed; it holds Done back until they do, and forcing it is a deliberate act.
