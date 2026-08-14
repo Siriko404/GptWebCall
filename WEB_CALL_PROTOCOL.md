@@ -377,6 +377,16 @@ Before telling the operator to click Go, verify the manifest lists exactly the i
 
 The extension accepts Chrome duplicate suffixes such as `name (1).json` only when they bind unambiguously to an expected filename. Existing different response bytes are never overwritten.
 
+### Which conversation the call lands in
+
+The panel's destination control sits above **Go** and has two settings. **Send in a new conversation** opens a fresh ChatGPT thread; this is the default and the bounded call the rest of this document describes. **Send in the conversation I am in** binds whichever ChatGPT tab is focused when Go is clicked, so a call can be delivered into a thread that has deliberately accumulated context.
+
+They are different products, not a convenience. A call sent into an existing thread is answered by a model that has already been argued with in that thread: intended in a conductor call, a contaminant in a bounded one. Decide which you are preparing before you prepare it, because a conductor request written to lean on prior context arrives incoherent in a fresh conversation, and a bounded request answered inside a long thread is no longer unsteered.
+
+The choice survives a browser restart, and **Resume** resolves the destination the same way Go does rather than assuming a fresh tab. Set the control before clicking either.
+
+The refusals are deliberate and none of them fall back. Sending into the current conversation is refused when there is no focused tab, when the focused tab cannot be proven to be `https://chatgpt.com/`, and when that conversation is already running another call. An unreadable tab address means the extension's `chatgpt.com` permission was declined; reload the extension and accept the prompt. Nothing about this reaches the companion, which takes `tab_id` as an opaque integer.
+
 ## Main response contract
 
 The required main JSON has this minimum shape:

@@ -47,9 +47,32 @@ generated prompt plus the inputs ZIP. `show` is the pre-send check — not
 
 ## 3. Operator round trip
 
-Ask the operator: side panel → **Go** → ChatGPT's **Attach files** → **Send** →
-download both named files → **Done and validate**. The extension attaches; it
-never sends.
+Ask the operator: side panel → destination set to **Send in a new
+conversation** → **Go** → ChatGPT's **Attach files** → **Send** → download both
+named files → **Done and validate**. The extension attaches; it never sends.
+
+Naming the destination matters even in the default case: the control persists
+across browser restarts, so a panel left on *Send in the conversation I am in*
+from earlier work will silently deliver the probe into whatever thread happens
+to be focused.
+
+### The current-conversation path
+
+Run it a second time, with a fresh probe, when the smoke test is checking the
+destination control rather than the pipeline — after any change to the
+extension, and whenever the operator asks for it.
+
+Build a new probe with a new token, open a ChatGPT conversation that already
+has messages in it, focus that tab, set the destination to **Send in the
+conversation I am in**, then Go. Pass conditions are the ones in §4, unchanged.
+Two extra things are being watched: the call must land in that existing thread
+rather than a new one, and the attachment must still reach the composer — a
+rendered thread is where `Page.fileChooserOpened` has been seen arriving with
+no node id, which is the path the fallback exists for.
+
+The refusals are part of the test. With the destination on *current* and a
+non-ChatGPT tab focused, Go must fail with a message naming the cause and must
+not open a tab instead.
 
 ## 4. Pass or fail
 

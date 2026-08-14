@@ -54,6 +54,28 @@ class ProtocolTests(unittest.TestCase):
         ):
             self.assertIn(command, covered, command)
 
+    def test_the_destination_control_is_documented_where_it_is_decided(self):
+        """A control that changes what the call *is* cannot live only in the UI.
+
+        Choosing the current conversation hands the request to a model that has
+        already been argued with. That is the point of a conductor call and
+        ruins a bounded one, so the reference has to name both settings and the
+        refusals, and `prep` - where the mode is chosen - has to send the
+        operator to the control before Go.
+        """
+        protocol = (self.root / "WEB_CALL_PROTOCOL.md").read_text(encoding="utf-8")
+
+        self.assertIn("Send in a new conversation", protocol)
+        self.assertIn("Send in the conversation I am in", protocol)
+        # Resume once created a fresh tab unconditionally, which silently threw
+        # away the thread a conductor call was bound to.
+        self.assertIn("**Resume** resolves the destination the same way Go does", protocol)
+
+        prep = (
+            self.root / "skill" / "webcall" / "skills" / "prep" / "SKILL.md"
+        ).read_text(encoding="utf-8")
+        self.assertIn("Send in the conversation I am in", prep)
+
     def test_protocol_is_the_complete_global_reference(self):
         protocol = (self.root / "WEB_CALL_PROTOCOL.md").read_text(encoding="utf-8")
 
