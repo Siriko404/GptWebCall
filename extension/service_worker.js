@@ -61,7 +61,7 @@ async function handlePanelMessage(message) {
     case "GO":
       return beginGo(message.exchangeId, message.mode);
     case "RESUME":
-      return resumeCall(message.exchangeId);
+      return resumeCall(message.exchangeId, message.mode);
     case "STOP":
       return stopCall(message.exchangeId);
     case "DONE":
@@ -199,11 +199,16 @@ async function beginGo(exchangeId, mode) {
 }
 
 
-async function resumeCall(exchangeId) {
-  const tab = await chrome.tabs.create({ url: CHATGPT_URL, active: true });
-  if (!Number.isInteger(tab.id)) {
-    throw new Error("Chrome did not create a usable ChatGPT tab");
-  }
+/* Resume re-arms a call whose handoff was lost — the panel offers it when the
+ * companion still reports an active call and session storage holds no handoff,
+ * which is what a browser restart leaves behind. That restart also destroys the
+ * only record of which conversation the call was delivered into, so the
+ * destination has to be resolved again rather than assumed: resuming a
+ * conductor call into a fresh tab would silently discard the thread the mode
+ * exists to keep.
+ */
+async function resumeCall(exchangeId, mode) {
+  const tab = await resolveTargetTab(mode);
   const existingDownloads = await chrome.downloads.search({});
   const payload = {
     tab_id: tab.id,
@@ -218,7 +223,9 @@ async function resumeCall(exchangeId) {
       result,
       tab.id,
       result.active.exchange_id,
-      "Resumed. Click Attach files in ChatGPT.",
+      mode === "current"
+        ? "Resumed into the open conversation. Click Attach files there."
+        : "Resumed. Click Attach files in ChatGPT.",
     );
     await writeHandoff(handoff);
     await armTab(tab.id);

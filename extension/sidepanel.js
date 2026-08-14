@@ -78,7 +78,9 @@ chrome.storage.local.get("goMode").then((stored) => {
 goButton.addEventListener("click", () =>
   run(() => send({ type: "GO", exchangeId: select.value, mode: goMode.value })),
 );
-resumeButton.addEventListener("click", () => run(() => send({ type: "RESUME" })));
+resumeButton.addEventListener("click", () =>
+  run(() => send({ type: "RESUME", mode: goMode.value })),
+);
 
 repairButton.addEventListener("click", () =>
   run(async () => {
