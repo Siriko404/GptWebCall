@@ -24,8 +24,14 @@ work. That is an owner requirement, not a preference.
    research. Require honest `PARTIAL` or `BLOCKED` if it cannot comply.
 5. Write a fresh `WEB_RESPONSE_SCHEMA.json` requiring `request_id`, `status`,
    the smoke results, `artifacts_manifest`, `limitations`, and `delivery`.
-   Require manifest entries for the outputs ZIP and for `smoke_receipt.txt` —
-   never for the main JSON itself.
+   Require a manifest entry for `smoke_receipt.txt` — never for the main JSON
+   itself.
+
+   **Pin every enum, especially the per-artifact `status`.** Left as
+   `{"type": "string"}` it has twice come back as `"COMPLETE"`, borrowed from
+   the top-level field, where the validator requires `CREATED`. Byte-perfect
+   work then validates with `manifest_verified: false`, which reads as the
+   validator failing when the schema was loose.
 6. Write a fresh preparation spec: `input_files` = the request JSON, the schema
    JSON, and `smoke_source.txt`; `expected_main_json` = the unique response name;
    `expected_artifacts` = the unique outputs ZIP.
@@ -56,7 +62,9 @@ launch line; it never sends.
 Watch the composer at Go. One line naming the archive and `000_READ_ME_FIRST.md`
 should appear in it by itself. If the panel shows that line with a copy button
 instead, typing it failed — paste it, and record that as a defect of this run
-even if the rest passes.
+even if the rest passes. In the current-conversation pass below, nothing is
+typed and nothing should appear: that thread already has the context, and the
+line would be words put into the operator's own conversation.
 
 Naming the destination matters even in the default case: the control persists
 across browser restarts, so a panel left on *Send in the conversation I am in*

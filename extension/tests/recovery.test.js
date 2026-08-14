@@ -42,11 +42,31 @@ test("Go types the launch line, and types it before arming the tab", async () =>
 });
 
 
-test("a launch line that could not be typed is offered to copy, and one that was is not", async () => {
+/* A fresh conversation needs telling what the attachment is. A thread the
+ * operator is already working in does not: it has the context that makes the
+ * archive make sense, and typing into it would put words in a conversation the
+ * operator is conducting. */
+test("the launch line is typed only into a fresh conversation", async () => {
+  const worker = await readFile(new URL("../service_worker.js", import.meta.url), "utf8");
+
+  const body = worker.slice(
+    worker.indexOf("async function typeLaunchPrompt"),
+    worker.indexOf("async function resumeCall"),
+  );
+  assert.match(body, /if \(mode === "current"\) \{\s*\n\s*return \{ inserted: null/);
+  assert.ok(
+    body.indexOf('mode === "current"') < body.indexOf("insertPromptIntoComposer"),
+    "the current-conversation case returns before anything is typed",
+  );
+});
+
+
+test("a launch line that could not be typed is offered to copy; one never attempted is not", async () => {
   const panel = await readFile(new URL("../sidepanel.js", import.meta.url), "utf8");
 
   assert.match(panel, /function showLaunchPrompt\(handoff\)/);
-  assert.match(panel, /if \(!handoff \|\| handoff\.launchInserted\) \{\s*\n\s*return;/);
+  // Strictly false. `null` is "never attempted" and must not surface a card.
+  assert.match(panel, /handoff\.launchInserted !== false/);
   assert.match(panel, /showPromptToCopy\(handoff\.launchPrompt\)/);
   assert.match(panel, /showPromptToCopy\(handoff\?\.repairPrompt\)/);
 });

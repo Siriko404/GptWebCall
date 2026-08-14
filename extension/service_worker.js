@@ -204,19 +204,28 @@ async function beginGo(exchangeId, mode) {
 }
 
 
-/* One archive goes up and the prompt is inside it, so the message ChatGPT
- * receives would otherwise be an attachment with nothing said about it — which
- * gets a model asking what to do rather than doing it. The companion writes the
- * line; this types it and stops. The operator still reviews it and clicks Send.
+/* One archive goes up with the prompt inside it, so a fresh conversation
+ * receives an attachment and nothing said about it — which gets a model asking
+ * what to do rather than doing it. The companion writes one line; this types it
+ * and stops. The operator still reviews it and clicks Send.
+ *
+ * Only for a fresh conversation. A thread the operator is already working in
+ * has the context that makes the archive make sense, and typing a line into it
+ * would put words in a conversation the operator is conducting. The text still
+ * travels on the handoff, so the panel can offer it if it turns out to be
+ * wanted.
  *
  * Failing to type it is not a failed call. The text goes to the panel with a
  * copy button instead, because the operator can paste it and carry on, and
  * aborting a call that has already started monitoring would cost more.
  */
 async function typeLaunchPrompt(tabId, text, mode) {
+  if (mode === "current") {
+    return { inserted: null, message: null };
+  }
   try {
     await insertPromptIntoComposer(tabId, text, {
-      attempts: mode === "current" ? 1 : COMPOSER_ATTEMPTS_NEW_TAB,
+      attempts: COMPOSER_ATTEMPTS_NEW_TAB,
     });
     return {
       inserted: true,

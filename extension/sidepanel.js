@@ -377,11 +377,14 @@ function renderResult(report) {
   resultBody.append(list);
 }
 
-/* Only when typing it failed. When it worked the line is already in the
- * composer, and showing it again would invite the operator to paste a second
- * copy underneath the first. */
+/* Only when typing it was attempted and failed.
+ *
+ * `true` means the line is already in the composer, and showing it again would
+ * invite the operator to paste a second copy underneath the first. `null` means
+ * it was never attempted, because the call is going into a conversation the
+ * operator is already working in and that thread does not need telling. */
 function showLaunchPrompt(handoff) {
-  if (!handoff || handoff.launchInserted) {
+  if (!handoff || handoff.launchInserted !== false) {
     return;
   }
   showPromptToCopy(handoff.launchPrompt);

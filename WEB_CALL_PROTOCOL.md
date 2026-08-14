@@ -112,7 +112,9 @@ You still enumerate `input_files` normally. The companion copies each one into `
 
 ### The launch line
 
-An archive arriving with no message gets a model asking what to do with it, and the call stalls before it has begun. The companion generates one line at Go naming the archive and `000_READ_ME_FIRST.md`, and the panel types it into the composer. It does not send: the operator reviews the line and the attachment, then clicks Send themselves.
+An archive arriving into a fresh conversation with no message gets a model asking what to do with it, and the call stalls before it has begun. The companion generates one line at Go naming the archive and `000_READ_ME_FIRST.md`, and the panel types it into the composer. It does not send: the operator reviews the line and the attachment, then clicks Send themselves.
+
+**Only into a fresh conversation.** A thread the operator is already working in has the context that makes the archive make sense, so it is not typed there. Sending into the current conversation is the operator's own thread, and putting words in it uninvited is not the extension's business. The text still travels with the call, so the panel can offer it if it turns out to be wanted.
 
 The line is about routing and nothing else. Anything describing the work belongs in the prompt inside the archive, where it is hashed with the rest of the request instead of typed into a composer and lost.
 
