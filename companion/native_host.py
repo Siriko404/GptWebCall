@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any, BinaryIO
 
 from companion.core import (
+    inspect_call,
     list_ready_calls,
     load_active_calls,
     call_progress,
@@ -25,6 +26,7 @@ from companion.downloads import (
     handle_completed_download,
 )
 from companion.repair import open_repair_round
+from companion.watch import record_download_failure
 
 
 MAX_MESSAGE_SIZE = 1024 * 1024
@@ -35,9 +37,11 @@ ALLOWED_COMMANDS = {
     "calls.active",
     "calls.progress",
     "calls.recent",
+    "call.inspect",
     "call.go",
     "call.resume",
     "download.completed",
+    "download.failure.record",
     "call.done",
     "call.repair",
     "call.stop",
@@ -108,6 +112,18 @@ def dispatch(root: Path, message: dict[str, Any]) -> dict[str, Any] | list[Any] 
     if command == "calls.recent":
         _require_keys(payload, set())
         return list_recent_calls(root)
+    if command == "call.inspect":
+        # Read-only recall for one exchange: metadata, report, defects, paths.
+        # Never file contents — the panel is not a viewer.
+        _require_keys(payload, {"exchange_id"})
+        return inspect_call(root, _required_string(payload, "exchange_id"))
+    if command == "download.failure.record":
+        # The one write the panel side may ask for beyond the call lifecycle:
+        # a bounded scalar event saying a completed download could not be
+        # filed. The companion stamps the time and does the attribution; the
+        # extension supplies only what Chrome told it.
+        _allow_keys(payload, {"message"}, {"download_id", "filename"})
+        return record_download_failure(root, payload)
     if command == "call.go":
         _require_keys(payload, {"exchange_id", "tab_id", "download_baseline"})
         exchange_id = _required_string(payload, "exchange_id")

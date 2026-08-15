@@ -21,6 +21,10 @@ _TIMESTAMP = "%Y-%m-%d_%H%M%S"
 # a model prints - inside an archive the name is the only thing telling a model
 # which file governs.
 PROMPT_IN_BUNDLE_NAME = "000_READ_ME_FIRST.md"
+# How many defects `inspect_call` carries back to the panel. The native
+# messaging frame has a hard one-megabyte ceiling and overflowing it fails the
+# whole command; `defects --exchange <id>` still reports every one.
+_DEFECTS_IN_INSPECT = 25
 _RESERVED_NAMES = {
     "CON",
     "PRN",
@@ -362,6 +366,85 @@ def call_progress(root: Path) -> list[dict[str, Any]]:
     return progress
 
 
+def inspect_call(root: Path, exchange_id: str) -> dict[str, Any]:
+    """Everything the panel may know about one exchange, without its content.
+
+    Recall is metadata: what the call was, what state it reached, what came
+    back, where the files live. Deliberately no file bodies — the panel is not
+    a viewer, and returned content stays inert on disk where "never execute
+    what a call returns" can hold.
+
+    Defects are computed only for an INCOMPLETE exchange, where they are the
+    next action. A PREPARED call has no response to diagnose, and diagnosing
+    one would report its absence as a defect; a COMPLETE one needs no repair.
+    """
+    root = Path(root).resolve()
+    exchange = _exchange_dir(root, exchange_id)
+    manifest = _read_json_object(
+        exchange / "EXCHANGE_MANIFEST.json", "EXCHANGE_MANIFEST"
+    )
+    state = str(manifest.get("state", ""))
+
+    response_dir = exchange / "response"
+    response_files = []
+    if response_dir.is_dir():
+        for path in sorted(response_dir.iterdir()):
+            if path.is_file():
+                response_files.append(
+                    {"filename": path.name, "size": path.stat().st_size}
+                )
+
+    validation = None
+    report_path = exchange / "validation" / "VALIDATION_REPORT.json"
+    if report_path.is_file():
+        try:
+            validation = _read_json_object(report_path, "VALIDATION_REPORT")
+        except ValueError:
+            validation = None
+
+    defects: list[dict[str, Any]] = []
+    defects_omitted = 0
+    if state == "INCOMPLETE":
+        # Imported here because repair imports this module at load time.
+        from companion.repair import collect_defects
+
+        found = collect_defects(exchange)
+        # A response declaring hundreds of artifacts can produce a defect for
+        # each one, and the native-messaging frame has a hard one-megabyte
+        # ceiling: overflowing it fails the whole panel command rather than
+        # truncating. The first few are what anyone acts on, and `defects`
+        # remains the complete account.
+        defects = found[:_DEFECTS_IN_INSPECT]
+        defects_omitted = max(0, len(found) - len(defects))
+
+    active = load_active_call(root, exchange_id)
+    main_path = response_dir / str(manifest.get("expected_main_json", ""))
+    return {
+        "exchange_id": manifest.get("exchange_id"),
+        "subject": manifest.get("subject"),
+        "request_id": manifest.get("request_id"),
+        "state": state,
+        "created_at": manifest.get("created_at"),
+        "expected_main_json": manifest.get("expected_main_json"),
+        "expected_artifacts": manifest.get("expected_artifacts", []),
+        "attach_files": manifest.get("attach_files", []),
+        "repair_round": int(manifest.get("repair_round", 0) or 0),
+        "repairs": manifest.get("repairs", []),
+        "response_files": response_files,
+        "validation": validation,
+        "defects": defects,
+        "defects_omitted": defects_omitted,
+        "download_failures": (
+            list(active.get("download_failures", [])) if active else []
+        ),
+        "paths": {
+            "exchange": str(exchange),
+            "main_response": str(main_path) if main_path.is_file() else None,
+            "validation_report": str(report_path) if report_path.is_file() else None,
+        },
+    }
+
+
 def start_call(
     root: Path,
     exchange_id: str,
@@ -652,6 +735,12 @@ def launch_prompt(root: Path, exchange_id: str) -> str:
     It is deliberately about routing and nothing else. Anything describing the
     work belongs in the prompt inside the archive, where it is hashed with the
     rest of the request instead of typed into a composer.
+
+    That is why this line does not dictate the shape of the reply. It used to
+    end "do not reply with anything except the downloads it asks for", which is
+    not routing but a rule about the work, and it silently broke any call whose
+    prompt wanted the model to say something as well - a call standing up a
+    conversational role, for one. The archive decides what comes back.
     """
     exchange_dir = _exchange_dir(Path(root).resolve(), exchange_id)
     manifest = _read_json_object(
@@ -664,8 +753,8 @@ def launch_prompt(root: Path, exchange_id: str) -> str:
     return (
         f"Open the attached archive {archive} now. Read {PROMPT_IN_BUNDLE_NAME} "
         "inside it first, then follow it exactly. Every file you need is in the "
-        "archive; do not ask what to do with it, and do not reply with anything "
-        "except the downloads it asks for."
+        "archive; do not ask what to do with it, and do not stop to summarise it "
+        "back. That file says what to do and what to reply with."
     )
 
 

@@ -19,6 +19,7 @@ from companion.core import (
 )
 from companion.downloads import default_downloads_dir, finalize_exchange, finish_call
 from companion.repair import collect_defects, open_repair_round
+from companion.watch import WaitInconsistency, wait_for_event
 
 
 def run(
@@ -72,8 +73,27 @@ def run(
                 options.tab,
                 [],
             )
+        elif command == "wait":
+            result = wait_for_event(
+                root,
+                options.exchange,
+                poll_ms=options.poll_ms,
+                timeout_seconds=options.timeout_seconds,
+                after_current=options.after_current,
+            )
         else:
             raise ValueError(f"unsupported command: {command}")
+    except WaitInconsistency as error:
+        # Not an ending and not a usage mistake: the exchange is there but
+        # persistently unreadable. Its own exit code wakes the waiting session
+        # to inspect without letting it mistake the wake for success.
+        json.dump(
+            {"ok": False, "command": command, "error": str(error)},
+            stderr,
+            ensure_ascii=False,
+        )
+        stderr.write("\n")
+        return 3
     except (Exception, SystemExit) as error:
         message = str(error) or "invalid command arguments"
         json.dump(
@@ -89,6 +109,10 @@ def run(
         ensure_ascii=False,
     )
     stdout.write("\n")
+    # A timeout is reported truthfully on stdout and distinguished on the exit
+    # code, so a script can branch without parsing: 0 an event, 1 nothing yet.
+    if command == "wait" and result.get("event") == "STILL_WAITING":
+        return 1
     return 0
 
 
@@ -118,6 +142,11 @@ def _parser() -> argparse.ArgumentParser:
     repair = subcommands.add_parser("repair", exit_on_error=False)
     repair.add_argument("--exchange", required=True)
     repair.add_argument("--tab", type=int, default=None)
+    wait = subcommands.add_parser("wait", exit_on_error=False)
+    wait.add_argument("--exchange", required=True)
+    wait.add_argument("--poll-ms", type=int, default=500)
+    wait.add_argument("--timeout-seconds", type=float, default=None)
+    wait.add_argument("--after-current", action="store_true")
     return parser
 
 

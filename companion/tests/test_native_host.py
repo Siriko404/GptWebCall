@@ -84,14 +84,42 @@ class NativeHostTests(unittest.TestCase):
                 "calls.active",
                 "calls.progress",
                 "calls.recent",
+                "call.inspect",
                 "call.go",
                 "call.resume",
                 "download.completed",
+                "download.failure.record",
                 "call.done",
                 "call.repair",
                 "call.stop",
             },
         )
+
+    def test_inspect_returns_metadata_and_never_content(self):
+        result = dispatch(
+            self.root,
+            self.message(
+                "call.inspect", {"exchange_id": self.manifest["exchange_id"]}
+            ),
+        )
+
+        self.assertEqual(result["state"], "PREPARED")
+        self.assertEqual(result["request_id"], "request_native")
+        self.assertEqual(result["expected_artifacts"], ["native_outputs.zip"])
+        self.assertEqual(result["repair_round"], 0)
+        self.assertIsNone(result["validation"])
+        self.assertEqual(result["defects"], [])
+        # The prompt travels in the request; recall must not carry it back.
+        self.assertNotIn("Return files only", json.dumps(result))
+
+    def test_failure_record_rejects_unknown_fields_and_missing_message(self):
+        with self.assertRaisesRegex(ValueError, "payload fields"):
+            dispatch(
+                self.root,
+                self.message("download.failure.record", {"path": "C:/evil"}),
+            )
+        with self.assertRaisesRegex(ValueError, "payload fields"):
+            dispatch(self.root, self.message("download.failure.record", {}))
 
     def test_dispatch_rejects_unknown_version_command_and_payload(self):
         with self.assertRaisesRegex(ValueError, "protocol_version"):
