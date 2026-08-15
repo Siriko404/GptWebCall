@@ -67,6 +67,14 @@ model that has already been argued with.
    condition. Pin the schema fully — a bare `"artifacts_manifest": {"type":
    "array"}` invites the model to invent keys and produces a false `INCOMPLETE`
    on correct work. Tell it in one line to reproduce the field names verbatim.
+
+   **The envelope field is `status`, and it is required.** The validator reads
+   `raw.get("status")` and demands `COMPLETE`, `PARTIAL` or `BLOCKED`
+   `[companion/repair.py:94]`. Any other name — `response_status` is the
+   tempting one — fails as `STATUS_INVALID` no matter how good the work is, and
+   the panel then offers a correction round to rename one field. Pin `status`
+   in every schema you write, alongside `request_id`, `delivery` and
+   `artifacts_manifest`.
 7. **Get the two lists right.** `delivery` names the one downloadable file, the
    outputs archive. `artifacts_manifest` names every created additional file,
    archive members included, each with exact size and SHA-256 — and never the
