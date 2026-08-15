@@ -5,10 +5,12 @@ import json
 import os
 import struct
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, BinaryIO
 
 from companion.core import (
+    clone_call,
     inspect_call,
     list_ready_calls,
     load_active_calls,
@@ -38,6 +40,7 @@ ALLOWED_COMMANDS = {
     "calls.progress",
     "calls.recent",
     "call.inspect",
+    "call.clone",
     "call.go",
     "call.resume",
     "download.completed",
@@ -117,6 +120,15 @@ def dispatch(root: Path, message: dict[str, Any]) -> dict[str, Any] | list[Any] 
         # Never file contents — the panel is not a viewer.
         _require_keys(payload, {"exchange_id"})
         return inspect_call(root, _required_string(payload, "exchange_id"))
+    if command == "call.clone":
+        # Send the same request again as a new exchange. The finished one is
+        # left exactly as it is: its response is the only copy of that work.
+        _require_keys(payload, {"exchange_id"})
+        return clone_call(
+            root,
+            _required_string(payload, "exchange_id"),
+            datetime.now(timezone.utc),
+        )
     if command == "download.failure.record":
         # The one write the panel side may ask for beyond the call lifecycle:
         # a bounded scalar event saying a completed download could not be

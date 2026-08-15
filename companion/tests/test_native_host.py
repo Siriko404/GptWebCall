@@ -85,6 +85,7 @@ class NativeHostTests(unittest.TestCase):
                 "calls.progress",
                 "calls.recent",
                 "call.inspect",
+                "call.clone",
                 "call.go",
                 "call.resume",
                 "download.completed",

@@ -25,6 +25,9 @@ PROMPT_IN_BUNDLE_NAME = "000_READ_ME_FIRST.md"
 # messaging frame has a hard one-megabyte ceiling and overflowing it fails the
 # whole command; `defects --exchange <id>` still reports every one.
 _DEFECTS_IN_INSPECT = 25
+# Which states can be sent again. A call that can still receive files is not
+# finished, and cloning one would duplicate a delivery in flight.
+CLONEABLE_STATES = {"COMPLETE", "INCOMPLETE", "STOPPED"}
 _RESERVED_NAMES = {
     "CON",
     "PRN",
@@ -154,6 +157,10 @@ def prepare_call(root: Path, spec: dict[str, Any], now: datetime) -> dict[str, A
             "subject": subject,
             "created_at": now.astimezone(timezone.utc).isoformat(),
             "state": "PREPARED",
+            # Set only by clone_call. Two exchanges with the same subject differ
+            # by timestamp alone, which is not enough to tell a resend from a
+            # coincidence when reading the archive later.
+            "cloned_from": spec.get("cloned_from") or None,
             "expected_main_json": expected_main,
             "expected_artifacts": expected_artifacts,
             "request_files": request_files,
@@ -178,6 +185,84 @@ def prepare_call(root: Path, spec: dict[str, Any], now: datetime) -> dict[str, A
     except BaseException:
         shutil.rmtree(staging, ignore_errors=True)
         raise
+
+
+def clone_call(root: Path, exchange_id: str, now: datetime) -> dict[str, Any]:
+    """Prepare the same request again, as a new exchange.
+
+    A finished call is a dead end otherwise: start_call takes PREPARED alone, so
+    asking the same question twice means asking it as a new call. The inputs are
+    still on disk beside the response, so the preparation is rebuilt here rather
+    than re-authored.
+
+    It is rebuilt from the manifest's own record of the request files, not from
+    a listing of the directory. A correction round writes into `repair/` today
+    and nothing writes into `request/` after preparation, but a clone driven by
+    whatever happens to be lying in that directory would quietly become a
+    different call the day something does. The manifest is the record of what
+    was sent; that is what gets sent again.
+
+    Refused unless the source has finished. A PREPARED or ACTIVE exchange still
+    holds its deliverable names, so the clone would be refused by the name check
+    anyway - with a message about filenames rather than about the thing actually
+    being asked for.
+
+    The resend expects the same filename as the original, whose download is
+    normally still sitting in the Downloads folder, so Chrome saves the second
+    one as `name (1).zip`. That is already handled: attribution matches the
+    dedupe suffix (see _matches_expected_name in downloads.py).
+    """
+    root = Path(root).resolve()
+    source_dir = _exchange_dir(root, exchange_id)
+    manifest = _read_json_object(
+        source_dir / "EXCHANGE_MANIFEST.json", "EXCHANGE_MANIFEST"
+    )
+    state = str(manifest.get("state", ""))
+    if state not in CLONEABLE_STATES:
+        raise RuntimeError(
+            f"call {exchange_id} is {state or 'in an unknown state'} and has not "
+            "finished. Only a finished call can be sent again: stop it first, or "
+            "wait for it."
+        )
+
+    request_dir = source_dir / "request"
+    # The prompt travels inside the archive and the archive is rebuilt from the
+    # inputs, so neither is an input to the new preparation.
+    packed = {str(name).casefold() for name in manifest.get("attach_files", [])}
+    packed.add(PROMPT_IN_BUNDLE_NAME.casefold())
+    input_files: list[dict[str, str]] = []
+    for record in manifest.get("request_files", []):
+        if not isinstance(record, dict):
+            continue
+        name = str(record.get("filename", ""))
+        if not name or name.casefold() in packed:
+            continue
+        input_files.append({"path": str(request_dir / name), "filename": name})
+    if not input_files:
+        raise RuntimeError(
+            f"call {exchange_id} records no input files to send again"
+        )
+
+    prompt_path = request_dir / PROMPT_IN_BUNDLE_NAME
+    if not prompt_path.is_file():
+        raise FileNotFoundError(
+            f"call {exchange_id} no longer has its prompt "
+            f"({PROMPT_IN_BUNDLE_NAME}); there is nothing to send again"
+        )
+
+    return prepare_call(
+        root,
+        {
+            "subject": manifest.get("subject", ""),
+            "request_id": manifest.get("request_id", ""),
+            "expected_main_json": manifest.get("expected_main_json", ""),
+            "expected_artifacts": manifest.get("expected_artifacts", []),
+            "prompt_text": prompt_path.read_text(encoding="utf-8"),
+            "input_files": input_files,
+            "cloned_from": exchange_id,
+        },
+        now,
+    )
 
 
 def _expected_artifact_names(spec: dict[str, Any]) -> list[str]:
@@ -299,6 +384,7 @@ def list_recent_calls(root: Path, limit: int = 12) -> list[dict[str, Any]]:
                 "request_id": manifest.get("request_id"),
                 "state": manifest.get("state"),
                 "created_at": manifest.get("created_at"),
+                "cloned_from": manifest.get("cloned_from") or None,
             }
         )
     recent.sort(key=lambda item: str(item["exchange_id"]), reverse=True)
