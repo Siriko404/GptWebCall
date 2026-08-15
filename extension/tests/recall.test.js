@@ -160,6 +160,24 @@ test("preparing a copy does not send it, and does not touch the original", async
 });
 
 
+/* A drawer builder either returns its nodes or appends them itself. The archive
+ * builder does the second, because it awaits the companion first — and it is
+ * `async`, so it returns a Promise, which is truthy. Appending that writes
+ * "[object Promise]" into the drawer.
+ *
+ * Two things stand between here and that: the caller passes a braced arrow that
+ * discards the return, and the appender tests for a Node. The braced arrow is
+ * one keystroke from being tidied into an expression arrow, so the Node test is
+ * the one that has to hold.
+ */
+test("an async drawer builder cannot leak a Promise into the page", async () => {
+  const panel = await read("sidepanel.js");
+
+  assert.match(panel, /const built = fill\(drawer\);\s*\n\s*if \(built instanceof Node\)/);
+  assert.doesNotMatch(panel, /if \(built\) \{/);
+});
+
+
 /* The boundary, restated as a test because a redesign is exactly when it would
  * be eroded by accident. */
 test("no panel code sends, attaches, downloads, or finishes on its own", async () => {

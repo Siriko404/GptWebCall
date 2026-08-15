@@ -183,8 +183,12 @@ function row(call, verdict, fill) {
     const drawer = document.createElement("div");
     drawer.className = "row-drawer";
     drawer.dataset.exchange = call.id;
+    /* A builder may return the nodes to append, or append them itself and
+     * return nothing. `instanceof Node` rather than a truthiness test, because
+     * the archive builder is async: a Promise is truthy, and appending one
+     * writes "[object Promise]" into the drawer. */
     const built = fill(drawer);
-    if (built) {
+    if (built instanceof Node) {
       drawer.append(built);
     }
     item.append(drawer);
