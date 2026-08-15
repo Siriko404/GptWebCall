@@ -8,6 +8,7 @@ from pathlib import Path
 from companion.core import (
     call_progress,
     list_ready_calls,
+    list_recent_calls,
     load_active_call,
     load_active_calls,
     prepare_call,
@@ -324,6 +325,61 @@ class CoreTests(unittest.TestCase):
         self.assertEqual(resumed["observed_download_ids"], [3])
         self.assertTrue(resumed["monitoring"])
         self.assertEqual(resumed["exchange_id"], call["exchange_id"])
+
+    def test_the_archive_row_separates_delivery_from_the_responder_s_verdict(self):
+        """The one case a single word gets wrong: everything arrived, every hash
+        checked out, and the report inside says the work was BLOCKED."""
+        call = prepare_call(self.root, self.spec(), self.now)
+        exchange = self.root / "calls" / call["exchange_id"]
+        manifest_path = exchange / "EXCHANGE_MANIFEST.json"
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        manifest["state"] = "COMPLETE"
+        manifest_path.write_text(json.dumps(manifest) + "\n", encoding="utf-8")
+        (exchange / "validation").mkdir(exist_ok=True)
+        (exchange / "validation" / "VALIDATION_REPORT.json").write_text(
+            json.dumps({"status": "COMPLETE", "response_status": "BLOCKED"}) + "\n",
+            encoding="utf-8",
+        )
+
+        [row] = list_recent_calls(self.root)
+
+        self.assertEqual(row["state"], "COMPLETE")
+        self.assertEqual(row["response_status"], "BLOCKED")
+
+    def test_an_unreadable_report_leaves_the_row_saying_nothing(self):
+        """Not saying is different from saying it is fine."""
+        call = prepare_call(self.root, self.spec(), self.now)
+        exchange = self.root / "calls" / call["exchange_id"]
+        manifest_path = exchange / "EXCHANGE_MANIFEST.json"
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        manifest["state"] = "COMPLETE"
+        manifest_path.write_text(json.dumps(manifest) + "\n", encoding="utf-8")
+        (exchange / "validation").mkdir(exist_ok=True)
+        (exchange / "validation" / "VALIDATION_REPORT.json").write_text(
+            "{ truncated", encoding="utf-8"
+        )
+
+        [row] = list_recent_calls(self.root)
+
+        self.assertIsNone(row["response_status"])
+
+    def test_the_archive_is_not_a_window_twelve_calls_wide(self):
+        """The panel presents this list as every past call, so twelve was a
+        quiet truncation. It is still bounded: the native-messaging frame fails
+        the whole command rather than truncating when it overflows."""
+        for index in range(14):
+            spec = self.spec()
+            spec["subject"] = f"Call number {index}"
+            spec["expected_artifacts"] = [f"call_{index}_outputs.zip"]
+            spec["expected_main_json"] = f"call_{index}.json"
+            prepare_call(
+                self.root, spec, self.now + timedelta(minutes=index)
+            )
+
+        rows = list_recent_calls(self.root)
+
+        self.assertEqual(len(rows), 14)
+        self.assertEqual(len(list_recent_calls(self.root, limit=5)), 5)
 
 
 if __name__ == "__main__":
