@@ -8,8 +8,10 @@ test("side panel exposes an explicit user-controlled Resume action", async () =>
   const panel = await readFile(new URL("../sidepanel.js", import.meta.url), "utf8");
   const worker = await readFile(new URL("../service_worker.js", import.meta.url), "utf8");
 
-  assert.match(html, /id="resume-button"/);
+  // One recovery card, one Resume per lost call, named by its exchange id.
+  assert.match(html, /id="recovery-card"/);
   assert.match(panel, /type: "RESUME"/);
+  assert.match(panel, /exchangeId: record\.exchange_id/);
   assert.match(worker, /case "RESUME"/);
   assert.match(worker, /nativeCommand\("call\.resume"/);
 });
@@ -81,11 +83,32 @@ test("resume sends the destination, and resolves it the way Go does", async () =
   const panel = await readFile(new URL("../sidepanel.js", import.meta.url), "utf8");
   const worker = await readFile(new URL("../service_worker.js", import.meta.url), "utf8");
 
-  assert.match(panel, /type: "RESUME", mode: goMode\.value/);
+  assert.match(panel, /mode: recoveryMode\.value/);
   assert.match(worker, /case "RESUME":\s*\n\s*return resumeCall\(message\.exchangeId, message\.mode\);/);
   assert.match(worker, /async function resumeCall\(exchangeId, mode\) \{\s*\n\s*const tab = await resolveTargetTab\(mode\);/);
   assert.doesNotMatch(
     worker.slice(worker.indexOf("async function resumeCall")),
     /chrome\.tabs\.create/,
   );
+});
+
+
+/* What a browser restart destroys is the binding to a conversation, and that
+ * cannot be guessed back. The old panel resumed with whatever the shared Go
+ * dropdown happened to say, which is how a conductor call was once re-armed
+ * against a blank conversation with no warning. Recovery now asks, and Resume
+ * stays disabled until the operator answers.
+ */
+test("recovery refuses to guess the destination a restart destroyed", async () => {
+  const html = await readFile(new URL("../sidepanel.html", import.meta.url), "utf8");
+  const panel = await readFile(new URL("../sidepanel.js", import.meta.url), "utf8");
+
+  // No preselected value: the first option is a disabled placeholder.
+  assert.match(html, /id="recovery-mode"/);
+  assert.match(html, /<option value="" disabled selected>/);
+  // And the button cannot be pressed until one is chosen.
+  assert.match(panel, /resume\.disabled = !recoveryMode\.value/);
+  // The recovery card only appears when the companion holds calls the browser
+  // has lost — not merely because a call is running.
+  assert.match(panel, /handoffs\.length === 0 \? activeRecords : \[\]/);
 });

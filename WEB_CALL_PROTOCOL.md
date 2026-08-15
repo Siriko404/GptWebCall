@@ -487,6 +487,8 @@ Rules:
 .\gptwebcall.cmd validate --exchange <exchange_id>
 .\gptwebcall.cmd defects --exchange <exchange_id>
 .\gptwebcall.cmd repair --exchange <exchange_id> --tab <tab_id>
+.\gptwebcall.cmd wait --exchange <exchange_id>
+.\gptwebcall.cmd wait --exchange <exchange_id> --after-current --timeout-seconds 900
 ```
 
 - `prepare`: snapshot and hash one new call package.
@@ -499,6 +501,38 @@ Rules:
 - `validate`: validate response files placed by hand into a non-active exchange. This is a manual-fallback step, not a pre-send check; it refuses a prepared call that nothing has answered. To inspect a call before sending it, use `show`.
 - `defects`: report every validation defect in a delivered response without changing anything.
 - `repair`: open a correction round, write its prompt and defect record, and re-arm monitoring.
+- `wait`: block until one exchange produces a lifecycle event, then print it and exit.
+
+### Waiting for a call to end
+
+An agent session cannot be interrupted from outside. It can, however, start a
+process and be re-entered when that process exits — so `wait` makes the exit the
+notification. It polls the filesystem, holds no lock while it sleeps, and lives
+outside Chrome entirely, because the native host dies with the port Chrome opened
+for it.
+
+It recognises every way a call actually ends, not only the happy one:
+
+| event | exit | meaning |
+|---|---|---|
+| `COMPLETE` / `INCOMPLETE` | 0 | terminal state reached and validated |
+| `STOPPED` | 0 | abandoned; nothing was validated |
+| `DELETED` | 0 | the exchange was removed after the wait began |
+| `REPAIR_OPENED` | 0 | **not an ending** — a correction round is running |
+| `DOWNLOAD_FILING_FAILED` | 0 | still running; a completed download could not be filed |
+| `STILL_WAITING` | 1 | the caller's own timeout expired. Not abandonment |
+| — | 2 | bad arguments, or an exchange that did not exist at first lookup |
+| — | 3 | the exchange is present but unreadable. Wake and inspect; never treat as success |
+
+Branch on the reported `event`, not on the exit code alone. `--after-current`
+makes the present state the baseline, which is how a session waits out a
+correction round on a call that is already `INCOMPLETE`.
+
+A wake-up is a fact about state and nothing more. It is not permission to act on
+a response: read the validation report and do semantic acceptance exactly as if a
+human had said the call was done. An abandoned call writes nothing at all, so no
+event will ever arrive for one — that is why the timeout reports `STILL_WAITING`
+rather than inventing an ending.
 
 ### Deleting a superseded call
 

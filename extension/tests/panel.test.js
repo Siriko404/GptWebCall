@@ -7,6 +7,7 @@ import {
   downloadGuard,
   formatBytes,
   formatElapsed,
+  resultFacts,
 } from "../lib/panel.js";
 
 const files = (...arrived) =>
@@ -102,4 +103,60 @@ test("a download that could not be filed tells the operator how to recover", () 
 test("no failure renders nothing at all", () => {
   assert.equal(describeDownloadFailure(null), "");
   assert.equal(describeDownloadFailure({ downloadId: 1, message: "" }), "");
+});
+
+test("the three result facts are kept apart, not collapsed into one word", () => {
+  const facts = resultFacts({
+    status: "COMPLETE",
+    response_status: "PARTIAL",
+    manifest_verified: true,
+  });
+
+  assert.equal(facts.length, 3);
+  const [delivery, work, manifest] = facts;
+  // An intact delivery of declared-partial work: the trap the operator has
+  // already fallen into once. Delivery must not look bad, work must not look
+  // done.
+  assert.equal(delivery.tone, "ok");
+  assert.equal(work.value, "PARTIAL");
+  assert.equal(work.tone, "wait");
+  assert.match(work.detail, /do not repair/);
+  assert.equal(manifest.value, "verified");
+});
+
+test("an unusable manifest warns without condemning the delivery", () => {
+  const [delivery, , manifest] = resultFacts({
+    status: "COMPLETE",
+    response_status: "COMPLETE",
+    manifest_verified: false,
+  });
+
+  assert.equal(delivery.tone, "ok");
+  assert.equal(manifest.value, "unusable");
+  assert.equal(manifest.tone, "wait");
+  assert.match(manifest.detail, /before trusting/);
+});
+
+test("an incomplete delivery is the fact that goes red", () => {
+  const [delivery, work] = resultFacts({
+    status: "INCOMPLETE",
+    response_status: "COMPLETE",
+    manifest_verified: true,
+  });
+
+  assert.equal(delivery.tone, "bad");
+  assert.equal(work.tone, "ok");
+});
+
+test("a report from before the response_status field renders honestly", () => {
+  const [delivery, work] = resultFacts({ status: "COMPLETE" });
+
+  assert.equal(delivery.value, "COMPLETE");
+  assert.equal(work.value, "unreported");
+  assert.equal(work.tone, "neutral");
+});
+
+test("no report means no facts", () => {
+  assert.deepEqual(resultFacts(null), []);
+  assert.deepEqual(resultFacts(undefined), []);
 });

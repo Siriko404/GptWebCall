@@ -76,6 +76,64 @@ export function downloadGuard(progress, forced = false) {
 }
 
 
+/* The report carries three independent facts that were being read as one word.
+ *
+ * `status` is the delivery: did every promised file arrive intact. `response_
+ * status` is the responder's own account of the work. `manifest_verified` says
+ * whether the declared hashes were usable. A PARTIAL piece of work delivered
+ * intact is COMPLETE + PARTIAL + true, and collapsing that into any single
+ * word has already misled the operator once. The panel therefore renders all
+ * three, each with its own tone, and this function is the one place the
+ * mapping lives.
+ */
+export function resultFacts(report) {
+  if (!report || typeof report !== "object") {
+    return [];
+  }
+  const delivery = report.status ?? null;
+  const work = report.response_status ?? null;
+  const manifest = report.manifest_verified;
+  return [
+    {
+      key: "delivery",
+      label: "Delivery",
+      value: delivery ?? "—",
+      tone: delivery === "COMPLETE" ? "ok" : delivery === "INCOMPLETE" ? "bad" : "neutral",
+      detail:
+        delivery === "COMPLETE"
+          ? "Every promised file arrived intact."
+          : delivery === "INCOMPLETE"
+            ? "A promised file is missing or corrupt."
+            : "No delivery verdict.",
+    },
+    {
+      key: "work",
+      label: "Work",
+      value: work ?? "unreported",
+      tone: work === "COMPLETE" ? "ok" : work === "PARTIAL" ? "wait" : work === "BLOCKED" ? "bad" : "neutral",
+      detail:
+        work === "PARTIAL"
+          ? "The responder declared gaps. Read them; do not repair an intact delivery."
+          : work === "BLOCKED"
+            ? "The responder said it could not do the work."
+            : work === "COMPLETE"
+              ? "The responder's own account of the work."
+              : "The responder did not report on its work.",
+    },
+    {
+      key: "manifest",
+      label: "Hashes",
+      value: manifest === true ? "verified" : manifest === false ? "unusable" : "—",
+      tone: manifest === true ? "ok" : manifest === false ? "wait" : "neutral",
+      detail:
+        manifest === false
+          ? "Declared hashes could not be used; read before trusting."
+          : "Each file checked against the hash the responder declared.",
+    },
+  ];
+}
+
+
 export function describeDownloadFailure(failure) {
   // The operator needs the recovery, not the stack trace: the bytes are safe in
   // the downloads folder and the exchange is still waiting for them.

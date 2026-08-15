@@ -67,6 +67,10 @@ async function handlePanelMessage(message) {
       return finishCall(message.exchangeId);
     case "REPAIR":
       return openRepairRound(message.exchangeId);
+    case "INSPECT":
+      // Read-only recall for one exchange. The companion returns metadata,
+      // the validation report, defects, and paths — never file contents.
+      return nativeCommand("call.inspect", { exchange_id: message.exchangeId });
     default:
       throw new Error(`Unknown extension command: ${message?.type}`);
   }
@@ -572,6 +576,14 @@ async function submitCompletedDownload(delta) {
  *
  * It is recorded, not retried. A retry could file an ambiguous filename into the
  * wrong exchange, and filename is the only thing attribution has to go on.
+ *
+ * Recorded twice, deliberately. Session storage is immediate but dies with the
+ * browser — which is exactly when the operator most needs the warning. The
+ * companion writes the same fact durably and attributes it to the call whose
+ * expected filename it matches, so the panel sees it after a restart and a
+ * waiting agent sees it at all. When the failure was the native channel
+ * itself, the second write fails too; session storage is then the honest
+ * remainder, which is why it is written first.
  */
 async function recordDownloadFailure(downloadId, error) {
   try {
@@ -585,6 +597,21 @@ async function recordDownloadFailure(downloadId, error) {
     await broadcastStatus(null);
   } catch (_ignored) {
     // Session storage is the last place left to report to.
+  }
+  try {
+    let filename = null;
+    if (Number.isInteger(downloadId)) {
+      const matches = await chrome.downloads.search({ id: downloadId });
+      filename = matches[0]?.filename ?? null;
+    }
+    await nativeCommand("download.failure.record", {
+      download_id: Number.isInteger(downloadId) ? downloadId : null,
+      filename,
+      message: error?.message ?? String(error),
+    });
+  } catch (_ignored) {
+    // The durable record is best-effort by nature: if the companion is the
+    // broken piece, there is nowhere durable left to write.
   }
 }
 

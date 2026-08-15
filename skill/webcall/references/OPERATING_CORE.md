@@ -121,7 +121,37 @@ made is a hypothesis to test, not a premise to confirm.
    `artifacts_manifest.filename` must not contain a path separator.
    `[companion/downloads.py archive_member_index]`
 
-## 6. The operator boundary
+## 6. Waiting for a call to end
+
+Nothing can push into your session. `wait` is the one way an event that happens
+later reaches you: it blocks, and its **exit is the notification**.
+
+```powershell
+& '<root>\gptwebcall.cmd' wait --exchange <id>
+```
+
+Run it in the background after handing a prepared call to the operator, and
+branch on `result.event`, not on the exit code alone:
+
+| event | what it means |
+|---|---|
+| `COMPLETE` / `INCOMPLETE` | the call ended and was validated |
+| `STOPPED` | the operator stopped it; nothing was validated |
+| `DELETED` | the exchange was removed |
+| `REPAIR_OPENED` | **not an ending** — a correction round is running. Wait again |
+| `DOWNLOAD_FILING_FAILED` | still running, but a download could not be filed. A human must look before Done |
+| `STILL_WAITING` | your own `--timeout-seconds` expired. Not abandonment |
+
+Exit codes: `0` an event, `1` a timeout, `2` bad arguments or an exchange that
+never existed, `3` the exchange is there but unreadable — wake and inspect, do
+not treat as success. `--after-current` makes the present state the baseline,
+which is how you wait out a correction round on an already-`INCOMPLETE` call.
+
+**Being woken is not permission.** It says the state changed, nothing more. Read
+the validation report and do semantic acceptance exactly as if a human had told
+you. `[companion/watch.py; companion/cli.py]`
+
+## 7. The operator boundary
 
 The agent prepares and reviews. The operator clicks Go, ChatGPT's real Attach
 control, ChatGPT's native Send, every download, and Done. The extension arms the
@@ -129,7 +159,7 @@ tab and fills the chooser the operator opened; it never presses Send and never
 reads the response page. Never automate around this.
 `[README.md; WEB_CALL_PROTOCOL.md "Roles and control boundary"]`
 
-## 7. Read the validation report correctly
+## 8. Read the validation report correctly
 
 Three fields, three different facts:
 
@@ -154,11 +184,11 @@ important claims checked against the declared authority, unsupported inference
 rejected, and only warranted conclusions integrated.
 `[WEB_CALL_PROTOCOL.md "Semantic acceptance"]`
 
-## 8. Look things up instead of memorising them
+## 9. Look things up instead of memorising them
 
 For anything infrequent, read the matching section of the installed
 `WEB_CALL_PROTOCOL.md` or the source itself. The complete CLI surface is
 `prepare`, `list`, `show`, `active`, `done`, `stop`, `delete`, `validate`,
-`defects`, `repair`. **There is no CLI `health` command**; `health` is a
+`defects`, `repair`, `wait`. **There is no CLI `health` command**; `health` is a
 native-host message the extension uses for its status dot.
 `[companion/cli.py:95-121; companion/native_host.py; extension/service_worker.js]`

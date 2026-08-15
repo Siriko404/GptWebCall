@@ -16,5 +16,6 @@ test("the panel tests the active list by length, never by truthiness", async () 
   const panel = await readFile(new URL("../sidepanel.js", import.meta.url), "utf8");
 
   assert.doesNotMatch(panel, /if \(state\.active\)/);
-  assert.match(panel, /state\.active\?\.length/);
+  // Absence is normalised to an array once, and every consumer counts it.
+  assert.match(panel, /state\.active \?\? \[\]/);
 });

@@ -10,7 +10,7 @@ Read [OPERATING_CORE](../../references/OPERATING_CORE.md). Treat the first
 argument as the action. With no argument, print only this list and ask which:
 
 `status` · `health [smoke]` · `finish <id>` · `recover <id>` · `repair <id>` ·
-`stop <id>` · `delete <id>` · `manual <id>` · `watch [id]` · `local <id>`
+`stop <id>` · `delete <id>` · `manual <id>` · `watch <id>` · `local <id>`
 
 Run `active` and `list` before any action that changes something. When more than
 one call is in flight, name the exchange — never guess.
@@ -78,11 +78,23 @@ first, let the operator send and download, copy the returned files into
 For an `ACTIVE` exchange with files already placed, `done --exchange <id>`.
 Never silently overwrite different bytes.
 
-### `watch [id]`
-Run `python scripts/watch_exchange.py [id]` in the background when the agent
-cannot click through the exchange itself. It prints nothing until a terminal
-state, then one line. With several exchanges in flight and no ID, it refuses to
-guess.
+### `watch <id>`
+`wait --exchange <id>`, run in the background. It blocks and its **exit is the
+notification** — the one way something that happens later reaches a session that
+nothing can interrupt.
+
+It reports every ending, not just the happy one: `COMPLETE`, `INCOMPLETE`,
+`STOPPED`, `DELETED`, plus `REPAIR_OPENED` for a correction round (**not** an
+ending — wait again) and `DOWNLOAD_FILING_FAILED` for a call still running whose
+download could not be filed. Exit `0` an event, `1` your own timeout expired
+(`STILL_WAITING`, which is not abandonment), `2` bad arguments, `3` the exchange
+is unreadable — inspect, never treat as success.
+
+Branch on `result.event`, never on the exit code alone. Being woken is not
+permission to act: read the report and do semantic acceptance as usual. Use
+`--after-current` to wait out a correction round on an already-`INCOMPLETE` call.
+Never poll in a shell loop instead — the lifecycle rules live in one command so
+they cannot drift per host.
 
 ### `local <id>`
 Run a prepared exchange against an explicitly authorised local subagent instead
@@ -112,5 +124,5 @@ Each action has an observable postcondition: `status` returns current JSON;
 `health` names every check and its result; `finish` writes a validation report;
 `recover` continues the same exchange; `repair` records a round only when
 defects existed; `stop` records `STOPPED`; `delete` reports the freed names;
-`manual` validates the placed files; `watch` emits one terminal line; `local`
+`manual` validates the placed files; `watch` exits with one named event; `local`
 validates a locally produced response.

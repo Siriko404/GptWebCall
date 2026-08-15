@@ -51,8 +51,43 @@ class ProtocolTests(unittest.TestCase):
             "validate",
             "defects",
             "repair",
+            "wait",
         ):
             self.assertIn(command, covered, command)
+
+    def test_only_one_thing_decides_what_a_call_ending_means(self):
+        """`wait` is the single place the lifecycle taxonomy lives.
+
+        A shell poller in a skill, or a second script beside it, is the same
+        rules written twice — and the copy that goes stale is the one that tells
+        a session a correction round was an ending, or stays silent through a
+        download that could not be filed. `scripts/watch_exchange.py` was that
+        second copy and is gone.
+        """
+        self.assertFalse((self.root / "scripts" / "watch_exchange.py").exists())
+        menu = (
+            self.root / "skill" / "webcall" / "skills" / "menu" / "SKILL.md"
+        ).read_text(encoding="utf-8")
+        self.assertNotIn("watch_exchange.py", menu)
+        # Every ending the taxonomy names has to be reachable from the docs a
+        # session actually reads, or it will handle only the happy one.
+        core = (
+            self.root / "skill" / "webcall" / "references" / "OPERATING_CORE.md"
+        ).read_text(encoding="utf-8")
+        protocol = (self.root / "WEB_CALL_PROTOCOL.md").read_text(encoding="utf-8")
+        for event in (
+            "COMPLETE",
+            "INCOMPLETE",
+            "STOPPED",
+            "DELETED",
+            "REPAIR_OPENED",
+            "DOWNLOAD_FILING_FAILED",
+            "STILL_WAITING",
+        ):
+            self.assertIn(event, core, event)
+            self.assertIn(event, protocol, event)
+        # And the thing that most needs saying out loud.
+        self.assertIn("not permission", core)
 
     def test_the_destination_control_is_documented_where_it_is_decided(self):
         """A control that changes what the call *is* cannot live only in the UI.
