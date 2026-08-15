@@ -7,14 +7,12 @@
     <link rel="stylesheet" href="sidepanel.css">
   </head>
   <body>
-    <div class="aurora" aria-hidden="true"></div>
-
     <header class="top">
       <div class="brand">
-        <span class="mark" aria-hidden="true">GW</span>
+        <span class="mark" aria-hidden="true">/</span>
         <div class="brand-text">
           <h1>GPT Web Call</h1>
-          <p id="companion-line" class="muted">Connecting to the companion</p>
+          <p id="companion-line" class="hint">Connecting</p>
         </div>
       </div>
       <div class="top-right">
@@ -40,9 +38,8 @@
           <h2>Recover</h2>
           <span class="pill wait" id="recovery-count"></span>
         </div>
-        <p class="muted">The browser restarted while these calls were running.
-          Which conversation each one lived in is gone with it — choose a
-          destination deliberately, then resume.</p>
+        <p class="hint">The browser restarted. Which conversation each call was
+          in is gone — choose deliberately.</p>
         <select id="recovery-mode" aria-label="Where to resume">
           <option value="" disabled selected>Choose a destination…</option>
           <option value="new">Resume in a new conversation</option>
@@ -69,8 +66,6 @@
           </select>
           <p id="go-mode-hint" class="hint"></p>
           <button id="go-button" class="primary" type="button">Go</button>
-          <p class="hint">Go arms the tab. You still click Attach, Send, every
-            download, and Done.</p>
         </div>
       </section>
 
@@ -83,7 +78,7 @@
         <div id="result-facts" class="facts"></div>
         <div id="result-body"></div>
         <ul id="defect-list" class="defects" hidden></ul>
-        <button id="repair-button" class="primary" type="button" hidden>
+        <button id="repair-button" class="accent" type="button" hidden>
           Open correction round
         </button>
       </section>

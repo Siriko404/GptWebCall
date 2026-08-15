@@ -71,8 +71,8 @@ reloadButton.addEventListener("click", () => chrome.runtime.reload());
  * expensive in one direction: a call meant for a long-running thread that opens
  * a blank conversation loses the context the thread existed to accumulate. */
 const GO_MODE_HINTS = {
-  new: "A fresh conversation. Nothing it has been told before affects the answer.",
-  current: "Lands in whichever ChatGPT conversation is focused when you click Go.",
+  new: "Nothing it has been told before affects the answer.",
+  current: "Whichever conversation is focused when you click Go.",
 };
 
 goMode.addEventListener("change", () => {
@@ -217,16 +217,16 @@ function renderDetail(call) {
   if (!call) {
     return;
   }
-  const rows = [
-    ["request", call.request_id],
-    ["returns", call.expected_main_json],
-  ];
-  for (const name of call.expected_artifacts ?? []) {
-    rows.push(["archive", name]);
+  /* Three lines, and only what the operator can act on before Go: which
+   * request this is, the one archive going up, the one coming back. The main
+   * JSON is not listed — it travels inside the archive and is never a download,
+   * which is the same reason the in-flight checklist stopped naming it. */
+  const rows = [["request", call.request_id]];
+  for (const name of call.attach_files ?? []) {
+    rows.push(["sends", name]);
   }
-  const uploads = call.attach_files ?? [];
-  if (uploads.length) {
-    rows.push(["uploads", `${uploads.length} files: ${uploads.join(", ")}`]);
+  for (const name of call.expected_artifacts ?? []) {
+    rows.push(["expects", name]);
   }
   for (const [term, value] of rows) {
     const dt = document.createElement("dt");

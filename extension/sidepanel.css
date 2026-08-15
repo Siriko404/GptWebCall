@@ -1,36 +1,31 @@
-/* One committed look: deep dark, glass surfaces, a single violet-to-cyan
-   accent. The panel is an attention stack read at a glance in a 320–500px
-   strip — the running call owns the top, everything else stays quiet until
-   it matters. Minimalism here means fewer boxes, not smaller text. */
+/* Line design. Navy ground, one green, hairlines instead of boxes.
+ *
+ * The panel is a narrow strip read under time pressure, so the rule here is
+ * that structure comes from space and single-pixel rules, never from stacked
+ * containers. Nothing is filled except the one action the operator is meant to
+ * take next. No shadows, no blur, no glow, no entrance animation.
+ */
 
 :root {
   color-scheme: dark;
   font-family: "Segoe UI Variable Text", "Segoe UI", Inter, system-ui, sans-serif;
   font-size: 14px;
 
-  --bg: #0a0d16;
-  --ink: #eef1f8;
-  --ink-soft: #9ea8bf;
-  --ink-faint: #6b7590;
+  --navy: #0a1628;
+  --navy-lift: #0f2038;
+  --line: #1b3054;
+  --line-soft: #142542;
 
-  --glass: rgba(255, 255, 255, 0.045);
-  --glass-deep: rgba(255, 255, 255, 0.028);
-  --edge: rgba(255, 255, 255, 0.09);
-  --edge-soft: rgba(255, 255, 255, 0.055);
+  --ink: #e8f0f8;
+  --muted: #8299b5;
+  --faint: #55708f;
 
-  --accent: #8b7cf6;
-  --accent-2: #22d3ee;
-  --on-accent: #0a0d16;
-
-  --ok: #34d399;
-  --ok-soft: rgba(52, 211, 153, 0.12);
-  --wait: #fbbf24;
-  --wait-soft: rgba(251, 191, 36, 0.12);
-  --bad: #f87171;
-  --bad-soft: rgba(248, 113, 113, 0.13);
+  --green: #38f06b;
+  --green-dim: #1a7f3d;
+  --amber: #ffc44d;
+  --red: #ff6b6b;
 
   --mono: ui-monospace, "Cascadia Mono", "SF Mono", Menlo, monospace;
-  --radius: 16px;
 }
 
 * { box-sizing: border-box; }
@@ -38,422 +33,367 @@
 body {
   margin: 0;
   color: var(--ink);
-  background: var(--bg);
-  min-height: 100vh;
+  background: var(--navy);
 }
 
-/* The glow the glass refracts. Fixed, so scrolling slides the frosted cards
-   over it and the blur reads as depth rather than decoration. */
-.aurora {
-  position: fixed;
-  inset: 0;
-  z-index: -1;
-  background:
-    radial-gradient(42rem 30rem at 110% -12%, rgba(139, 124, 246, 0.16), transparent 60%),
-    radial-gradient(36rem 26rem at -30% 30%, rgba(34, 211, 238, 0.10), transparent 60%),
-    radial-gradient(30rem 30rem at 60% 115%, rgba(139, 124, 246, 0.08), transparent 65%),
-    var(--bg);
-}
-
-/* ---------- top strip ---------- */
+/* ---------- header ---------- */
 
 .top {
   position: sticky;
   top: 0;
   z-index: 2;
   display: flex;
-  gap: 10px;
+  gap: 12px;
   align-items: center;
   justify-content: space-between;
-  padding: 12px 16px;
-  border-bottom: 1px solid var(--edge-soft);
-  background: rgba(10, 13, 22, 0.72);
-  backdrop-filter: blur(18px) saturate(140%);
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--line);
+  background: var(--navy);
 }
 
-.brand { display: flex; gap: 10px; align-items: center; min-width: 0; }
+.brand { display: flex; gap: 10px; align-items: baseline; min-width: 0; }
 .brand-text { min-width: 0; }
-.top-right { display: flex; gap: 8px; align-items: center; flex: none; }
+.top-right { display: flex; gap: 10px; align-items: center; flex: none; }
 
 .mark {
-  display: grid;
   flex: none;
-  place-items: center;
-  width: 32px;
-  height: 32px;
-  border-radius: 10px;
-  color: var(--on-accent);
-  background: linear-gradient(135deg, var(--accent), var(--accent-2));
+  color: var(--green);
+  font-family: var(--mono);
   font-size: 12px;
-  font-weight: 800;
-  letter-spacing: 0.02em;
-  box-shadow: 0 0 18px rgba(139, 124, 246, 0.35);
+  font-weight: 700;
+  letter-spacing: 0.06em;
 }
 
-h1 { margin: 0; font-size: 15px; line-height: 1.2; font-weight: 650; }
+h1 { margin: 0; font-size: 14px; font-weight: 600; line-height: 1.2; }
+
 h2 {
   margin: 0;
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.09em;
+  color: var(--faint);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
   text-transform: uppercase;
-  color: var(--ink-soft);
 }
 
 .dot {
   flex: none;
-  width: 9px;
-  height: 9px;
+  width: 7px;
+  height: 7px;
   border-radius: 50%;
-  background: var(--ink-faint);
+  background: var(--faint);
 }
 
-.dot.up { background: var(--ok); box-shadow: 0 0 10px rgba(52, 211, 153, 0.7); }
-.dot.down { background: var(--bad); box-shadow: 0 0 10px rgba(248, 113, 113, 0.7); }
+.dot.up { background: var(--green); }
+.dot.down { background: var(--red); }
 
-/* ---------- the stack ---------- */
+/* ---------- sections: rules, not boxes ---------- */
 
-main { display: grid; gap: 12px; padding: 14px; }
+main { display: block; padding: 0 16px 20px; }
 
 .card {
   display: grid;
   gap: 10px;
-  padding: 14px;
-  border: 1px solid var(--edge-soft);
-  border-radius: var(--radius);
-  background: var(--glass);
-  backdrop-filter: blur(18px) saturate(140%);
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.32);
-  animation: settle 240ms ease-out;
+  padding: 18px 0;
+  border-top: 1px solid var(--line-soft);
 }
 
-@keyframes settle {
-  from { opacity: 0; transform: translateY(4px); }
-  to { opacity: 1; transform: none; }
-}
+main > .card:first-of-type { border-top: 0; }
 
-@media (prefers-reduced-motion: reduce) {
-  .card { animation: none; }
-}
-
-/* The running call is the one thing allowed to glow. */
-.lane {
-  border-color: rgba(139, 124, 246, 0.32);
-  box-shadow:
-    0 10px 30px rgba(0, 0, 0, 0.32),
-    0 0 0 1px rgba(139, 124, 246, 0.08) inset;
-}
+/* The running call gets one green rule. That is the whole emphasis. */
+.lane { border-top: 1px solid var(--green-dim); }
 
 .card-head {
   display: flex;
-  gap: 8px;
-  align-items: center;
+  gap: 10px;
+  align-items: baseline;
   justify-content: space-between;
 }
 
-.head-tools { display: flex; gap: 8px; align-items: center; }
+.head-tools { display: flex; gap: 10px; align-items: baseline; }
 
-.muted { margin: 0; color: var(--ink-soft); font-size: 12px; line-height: 1.5; }
-.hint { margin: 0; color: var(--ink-faint); font-size: 11px; line-height: 1.5; }
+.muted { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.5; }
+.hint { margin: 0; color: var(--faint); font-size: 11px; line-height: 1.5; }
 
 .pill {
-  padding: 2px 9px;
-  border: 1px solid var(--edge-soft);
-  border-radius: 999px;
-  color: var(--ink-soft);
-  background: var(--glass-deep);
+  color: var(--faint);
   font-size: 11px;
-  font-weight: 700;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
 
-.pill.ok { color: var(--ok); border-color: transparent; background: var(--ok-soft); }
-.pill.wait { color: var(--wait); border-color: transparent; background: var(--wait-soft); }
-.pill.bad { color: var(--bad); border-color: transparent; background: var(--bad-soft); }
+.pill.ok { color: var(--green); }
+.pill.wait { color: var(--amber); }
+.pill.bad { color: var(--red); }
 
 /* ---------- controls ---------- */
 
 select, button {
   width: 100%;
-  min-height: 38px;
-  border-radius: 11px;
+  min-height: 34px;
+  border-radius: 3px;
   font: inherit;
+  font-size: 13px;
 }
 
+/* Native selects paint their own light chrome over a dark page. Drawing the
+   control ourselves and colouring the option list keeps the popup readable. */
 select {
-  padding: 0 10px;
-  border: 1px solid var(--edge);
+  appearance: none;
+  padding: 0 30px 0 10px;
+  border: 1px solid var(--line);
   color: var(--ink);
-  background: rgba(255, 255, 255, 0.03);
+  background-color: var(--navy);
+  background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%238299b5' stroke-width='1.5' stroke-linecap='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 11px center;
 }
+
+select option { color: var(--ink); background-color: var(--navy-lift); }
+select:hover { border-color: var(--muted); }
 
 select:focus-visible, button:focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 1px solid var(--green);
   outline-offset: 1px;
 }
 
 button {
-  border: 0;
+  border: 1px solid var(--line);
   padding: 0 12px;
-  font-weight: 700;
-  cursor: pointer;
-  transition: filter 120ms ease, transform 120ms ease;
-}
-
-button:not(:disabled):hover { filter: brightness(1.12); }
-button:not(:disabled):active { transform: translateY(1px); }
-button:disabled { cursor: not-allowed; opacity: 0.4; }
-
-.primary {
-  color: #fff;
-  background: linear-gradient(135deg, var(--accent), #6457e8);
-  box-shadow: 0 4px 18px rgba(139, 124, 246, 0.35);
-}
-
-.secondary {
   color: var(--ink);
-  border: 1px solid var(--edge);
-  background: rgba(255, 255, 255, 0.05);
+  background: transparent;
+  font-weight: 500;
+  cursor: pointer;
 }
+
+button:not(:disabled):hover { border-color: var(--muted); }
+button:disabled { cursor: not-allowed; color: var(--faint); border-color: var(--line-soft); }
+
+/* Exactly one filled control on screen: the next thing to press. */
+.primary {
+  color: var(--navy);
+  border-color: var(--green);
+  background: var(--green);
+  font-weight: 650;
+}
+
+.primary:not(:disabled):hover { border-color: var(--green); background: var(--green); }
+.primary:disabled { color: var(--faint); border-color: var(--line-soft); background: transparent; }
+
+/* Available, and deliberate. Outlined rather than filled so only one slab of
+   green is ever on screen: the thing to press now, not the thing you may. */
+.accent { color: var(--green); border-color: var(--green-dim); }
+.accent:not(:disabled):hover { border-color: var(--green); }
+
+.secondary { color: var(--muted); }
 
 .ghost {
   width: auto;
-  min-height: 26px;
-  padding: 0 9px;
-  border: 1px solid var(--edge-soft);
-  border-radius: 8px;
-  color: var(--ink-soft);
-  background: transparent;
+  min-height: 20px;
+  padding: 0;
+  border: 0;
+  color: var(--faint);
   font-size: 11px;
+  text-decoration: underline;
+  text-underline-offset: 3px;
 }
+
+.ghost:not(:disabled):hover { color: var(--green); border: 0; }
 
 .row { display: flex; gap: 8px; }
 .row > button { flex: 1; }
 
-/* ---------- prepared call detail ---------- */
+/* ---------- key/value lines ---------- */
 
-.detail {
+.detail, .kv {
   display: grid;
   grid-template-columns: auto 1fr;
-  gap: 3px 10px;
+  gap: 3px 12px;
   margin: 0;
   font-size: 11px;
 }
 
-.detail dt { color: var(--ink-faint); }
-.detail dd { margin: 0; color: var(--ink-soft); font-family: var(--mono); word-break: break-all; }
+.detail dt, .kv dt { color: var(--faint); }
 
-/* A collapsed launch card is a single quiet line while a call runs. */
+.detail dd, .kv dd {
+  margin: 0;
+  color: var(--muted);
+  font-family: var(--mono);
+  word-break: break-all;
+}
+
+.kv dd { user-select: all; }
+
 #launch-card.collapsed #launch-body { display: none; }
 
 /* ---------- an in-flight call ---------- */
 
-.call {
-  display: grid;
-  gap: 9px;
-  padding: 12px;
-  border: 1px solid var(--edge-soft);
-  border-left: 3px solid var(--accent);
-  border-radius: 12px;
-  background: var(--glass-deep);
-}
+.call { display: grid; gap: 8px; }
+.call + .call { margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--line-soft); }
 
-.call + .call { margin-top: 9px; }
-
-.call-title { margin: 0; font-size: 13px; font-weight: 700; line-height: 1.25; }
+.call-title { margin: 0; font-size: 13px; font-weight: 600; line-height: 1.3; }
 
 .call-id {
-  color: var(--ink-faint);
+  color: var(--faint);
   font-family: var(--mono);
   font-size: 10px;
   word-break: break-all;
 }
 
-.call-stage { margin: 0; color: var(--ink-soft); font-size: 12px; line-height: 1.4; }
+.call-stage { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.45; }
 
 /* The checklist is the reason this panel exists. */
 
-.files { display: grid; gap: 4px; margin: 0; padding: 0; list-style: none; }
+.files { display: grid; gap: 5px; margin: 2px 0; padding: 0; list-style: none; }
 
 .files li {
   display: flex;
-  gap: 7px;
+  gap: 8px;
   align-items: baseline;
   font-family: var(--mono);
   font-size: 11px;
 }
 
-.files .tick { flex: none; width: 11px; font-weight: 700; }
+.files .tick { flex: none; width: 8px; }
 .files .name { flex: 1; word-break: break-all; }
-.files .size { color: var(--ink-faint); font-variant-numeric: tabular-nums; }
+.files .size { color: var(--faint); font-variant-numeric: tabular-nums; }
 
-.files li.here .tick { color: var(--ok); }
+.files li.here .tick { color: var(--green); }
 .files li.here .name { color: var(--ink); }
-.files li.away .tick { color: var(--wait); }
-.files li.away .name { color: var(--ink-faint); }
+.files li.away .tick { color: var(--amber); }
+.files li.away .name { color: var(--faint); }
 
+/* Warnings are the one place colour carries meaning on its own. A rule, not a
+   filled panel: it still reads as urgent and costs three lines less. */
 .warn {
   margin: 0;
-  padding: 8px 10px;
-  border: 1px solid rgba(251, 191, 36, 0.25);
-  border-radius: 10px;
-  color: var(--wait);
-  background: var(--wait-soft);
+  padding: 0 0 0 10px;
+  border-left: 2px solid var(--amber);
+  color: var(--amber);
   font-size: 11px;
-  line-height: 1.45;
+  line-height: 1.5;
 }
 
 /* ---------- recovery ---------- */
 
-.recover-item {
-  display: grid;
-  gap: 8px;
-  padding: 10px 12px;
-  border: 1px solid var(--edge-soft);
-  border-radius: 12px;
-  background: var(--glass-deep);
+.recover-item { display: grid; gap: 6px; }
+
+.recover-item + .recover-item {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line-soft);
 }
 
-.recover-item + .recover-item { margin-top: 8px; }
+/* ---------- results: three lines, three truths ---------- */
 
-/* ---------- results: three facts ---------- */
-
-.facts { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.facts { display: grid; gap: 0; }
 
 .fact {
-  display: grid;
-  gap: 3px;
-  padding: 9px 10px;
-  border: 1px solid var(--edge-soft);
-  border-radius: 12px;
-  background: var(--glass-deep);
-  text-align: center;
+  display: flex;
+  gap: 12px;
+  align-items: baseline;
+  justify-content: space-between;
+  padding: 7px 0;
+  border-bottom: 1px solid var(--line-soft);
 }
 
-.fact .fact-label {
-  color: var(--ink-faint);
+.fact:last-child { border-bottom: 0; }
+
+.fact-label {
+  color: var(--faint);
   font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
+  font-weight: 600;
+  letter-spacing: 0.12em;
   text-transform: uppercase;
 }
 
-.fact .fact-value { font-size: 12px; font-weight: 750; }
-.fact.ok .fact-value { color: var(--ok); }
-.fact.wait .fact-value { color: var(--wait); }
-.fact.bad .fact-value { color: var(--bad); }
-.fact.neutral .fact-value { color: var(--ink-soft); }
+.fact-value { font-family: var(--mono); font-size: 12px; }
+.fact.ok .fact-value { color: var(--green); }
+.fact.wait .fact-value { color: var(--amber); }
+.fact.bad .fact-value { color: var(--red); }
+.fact.neutral .fact-value { color: var(--muted); }
 
-.fact-detail { margin: 0; color: var(--ink-faint); font-size: 11px; line-height: 1.45; }
-
-/* A side panel can be dragged narrower than three columns of words will fit.
-   Stacking is right where truncating would not be: each of these is a distinct
-   verdict, and a clipped one reads as a different word. */
-@media (max-width: 380px) {
-  .facts { grid-template-columns: 1fr; }
-  .fact {
-    grid-template-columns: auto 1fr;
-    align-items: baseline;
-    text-align: left;
-  }
+.result-list {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 11px;
 }
 
-.result-list { display: grid; gap: 5px; margin: 0; padding: 0; list-style: none; font-size: 12px; }
-.result-list li { display: flex; gap: 7px; }
-.result-list .label { color: var(--ink-faint); flex: none; }
-.result-list .value { font-family: var(--mono); word-break: break-all; }
+.result-list li { display: flex; gap: 10px; }
+.result-list .label { flex: none; min-width: 62px; color: var(--faint); }
+.result-list .value { font-family: var(--mono); color: var(--muted); word-break: break-all; }
 
-.defects { display: grid; gap: 5px; margin: 0; padding: 0; list-style: none; }
+.defects { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
 
 .defects li {
   display: grid;
   gap: 2px;
-  padding: 7px 9px;
-  border: 1px solid rgba(248, 113, 113, 0.22);
-  border-radius: 10px;
-  background: var(--bad-soft);
+  padding-left: 10px;
+  border-left: 2px solid var(--red);
   font-size: 11px;
-  line-height: 1.4;
+  line-height: 1.45;
 }
 
-.defects .kind { color: var(--bad); font-weight: 700; font-family: var(--mono); }
-.defects .why { color: var(--ink-soft); }
+.defects .kind { color: var(--red); font-family: var(--mono); }
+.defects .why { color: var(--muted); }
 
 .code {
-  max-height: 260px;
+  max-height: 240px;
   margin: 0;
   padding: 10px;
   overflow: auto;
-  border: 1px solid var(--edge-soft);
-  border-radius: 11px;
-  color: var(--ink-soft);
-  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid var(--line-soft);
+  border-radius: 3px;
+  color: var(--muted);
   font-family: var(--mono);
   font-size: 11px;
-  line-height: 1.5;
+  line-height: 1.55;
   white-space: pre-wrap;
   word-break: break-word;
 }
 
 /* ---------- the archive ---------- */
 
-.history { display: grid; gap: 4px; margin: 0; padding: 0; list-style: none; }
+.history { display: grid; margin: 0; padding: 0; list-style: none; }
 
 .h-row {
   display: flex;
-  gap: 8px;
-  align-items: center;
+  gap: 10px;
+  align-items: baseline;
   justify-content: space-between;
   width: 100%;
-  min-height: 34px;
-  padding: 6px 9px;
-  border: 1px solid transparent;
-  border-radius: 10px;
-  color: var(--ink-soft);
-  background: transparent;
-  font: inherit;
+  min-height: 30px;
+  padding: 6px 0;
+  border: 0;
+  border-bottom: 1px solid var(--line-soft);
+  border-radius: 0;
+  color: var(--muted);
   font-size: 12px;
   text-align: left;
-  cursor: pointer;
 }
 
-.h-row:hover { border-color: var(--edge-soft); background: var(--glass-deep); filter: none; }
-.h-row[aria-expanded="true"] { border-color: var(--edge); background: var(--glass-deep); }
+.h-row:not(:disabled):hover { border-color: var(--line-soft); color: var(--ink); }
+.h-row[aria-expanded="true"] { color: var(--green); border-bottom-color: transparent; }
 .h-row .h-name { flex: 1; min-width: 0; word-break: break-word; }
 
 .h-drawer {
   display: grid;
-  gap: 8px;
-  margin: 2px 0 6px;
-  padding: 10px 12px;
-  border: 1px solid var(--edge-soft);
-  border-radius: 12px;
-  background: var(--glass-deep);
+  gap: 10px;
+  margin: 0 0 10px;
+  padding: 0 0 12px 12px;
+  border-left: 1px solid var(--line);
+  border-bottom: 1px solid var(--line-soft);
 }
-
-.h-drawer .facts { grid-template-columns: repeat(3, 1fr); }
-
-.kv {
-  display: grid;
-  grid-template-columns: auto 1fr;
-  gap: 2px 10px;
-  margin: 0;
-  font-size: 11px;
-}
-
-.kv dt { color: var(--ink-faint); }
-.kv dd { margin: 0; color: var(--ink-soft); font-family: var(--mono); word-break: break-all; user-select: all; }
 
 .error {
-  margin: 0;
-  padding: 9px 11px;
-  border: 1px solid rgba(248, 113, 113, 0.3);
-  border-radius: 11px;
-  color: var(--bad);
-  background: var(--bad-soft);
+  margin: 12px 0 0;
+  padding-left: 10px;
+  border-left: 2px solid var(--red);
+  color: var(--red);
   font-size: 12px;
-  line-height: 1.45;
+  line-height: 1.5;
 }
 
 [hidden] { display: none !important; }
