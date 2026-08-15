@@ -1,6 +1,6 @@
 ---
 name: menu
-description: Every GPT Web Call action other than installing and preparing — status, health, finish, recover, repair, stop, delete, manual fallback, watch, local responder. Use only when the user explicitly invokes this workflow.
+description: Every GPT Web Call action other than installing and preparing — status, health, finish, recover, repair, stop, delete, clone, manual fallback, watch, local responder. Use only when the user explicitly invokes this workflow.
 disable-model-invocation: true
 ---
 
@@ -10,7 +10,8 @@ Read [OPERATING_CORE](../../references/OPERATING_CORE.md). Treat the first
 argument as the action. With no argument, print only this list and ask which:
 
 `status` · `health [smoke]` · `finish <id>` · `recover <id>` · `repair <id>` ·
-`stop <id>` · `delete <id>` · `manual <id>` · `watch <id>` · `local <id>`
+`stop <id>` · `delete <id>` · `clone <id>` · `manual <id>` · `watch <id>` ·
+`local <id>`
 
 Run `active` and `list` before any action that changes something. When more than
 one call is in flight, name the exchange — never guess.
@@ -49,6 +50,12 @@ ingests from the Downloads folder. Then read the report: delivery `COMPLETE`
 with responder `PARTIAL` or `BLOCKED` means read the limitations and do semantic
 acceptance — not repair. Delivery `INCOMPLETE` means run `defects`.
 
+**The panel will not tell you this part.** It shows the delivery state and
+nothing else, deliberately: `response_status` and `manifest_verified` live in
+`validation\VALIDATION_REPORT.json`, and reading them is your job, not the
+panel's. A row saying `COMPLETE` means the files arrived intact — never that the
+work is good.
+
 ### `recover <id>`
 Run `active` first. If the request was never sent, use the panel's **Resume
 attachment** and continue the same exchange. If it was sent, do not resend:
@@ -69,6 +76,17 @@ keeps every file.
 For a superseded call that is not running, to remove it and free its routing
 names. Never on a running call. If a response has landed, refuse unless the
 operator explicitly chooses to discard it, and only then pass `--force`.
+
+### `clone <id>`
+To ask the same question again. Builds a new `PREPARED` exchange from the
+finished one's own inputs and leaves the original alone — its response is the
+only copy of work the model already did, so nothing is overwritten. The copy is
+not sent; that is a separate, deliberate **Go**.
+
+This is the only way out of `STOPPED`, which `go`, `done` and `repair` each
+refuse. The panel has it as **Prepare a copy** on a finished call's row.
+Refused while the source is `PREPARED` or `ACTIVE`: it has not finished, and it
+still holds the deliverable names the copy would need.
 
 ### `manual <id>`
 For a `PREPARED` exchange: `show` it, upload the one archive in `attach_files`
@@ -123,6 +141,7 @@ buying.
 Each action has an observable postcondition: `status` returns current JSON;
 `health` names every check and its result; `finish` writes a validation report;
 `recover` continues the same exchange; `repair` records a round only when
-defects existed; `stop` records `STOPPED`; `delete` reports the freed names;
+defects existed; `stop` records `STOPPED`; `delete` reports the freed names; `clone` returns a
+new `PREPARED` manifest naming the call it came from;
 `manual` validates the placed files; `watch` exits with one named event; `local`
 validates a locally produced response.

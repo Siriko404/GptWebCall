@@ -379,7 +379,7 @@ Before telling the operator to click Go, verify the manifest lists exactly the i
 
 ## Normal extension workflow
 
-1. The operator opens the GPT Web Call side panel and selects the prepared call.
+1. The operator opens the GPT Web Call side panel and clicks the prepared call's row, which opens that call's controls beneath it.
 2. The operator clicks **Go**. The companion verifies the frozen request files; monitoring starts; ChatGPT opens.
 3. The extension waits. The operator clicks ChatGPT's real **Attach files** control.
 4. The extension assigns exactly the manifest-approved request files to that chooser and detaches its debugger immediately.
@@ -391,13 +391,58 @@ Before telling the operator to click Go, verify the manifest lists exactly the i
 
 The extension accepts Chrome duplicate suffixes such as `name (1).json` only when they bind unambiguously to an expected filename. Existing different response bytes are never overwritten.
 
+### The panel is two lists of calls
+
+Calls that need something sit on top — prepared and running — and finished calls
+below them, newest first. Clicking any row opens that call's own controls in
+place; one row is open at a time. What a row offers follows from its state:
+
+| state | what its row offers |
+|---|---|
+| `PREPARED` | the request id, the archive going up, the one coming back, a destination, and **Go** |
+| `ACTIVE` | the stage, elapsed time, the file checklist, **Done and validate**, **Stop** |
+| `ACTIVE`, binding lost | a destination and **Resume attachment**, plus **Stop** |
+| `COMPLETE` / `INCOMPLETE` | the response paths, defects when there are any, **Open correction round**, **Prepare a copy** |
+| `STOPPED` | the response paths and **Prepare a copy** |
+
+A row shows the **delivery** state only: whether every promised file arrived and
+matched the hash declared for it. What the responder said about its own work,
+and whether the declared hashes were usable, are in
+`validation\VALIDATION_REPORT.json` — read them there. The panel reports on the
+pipe, not on the answer.
+
 ### Which conversation the call lands in
 
-The panel's destination control sits above **Go** and has two settings. **Send in a new conversation** opens a fresh ChatGPT thread; this is the default and the bounded call the rest of this document describes. **Send in the conversation I am in** binds whichever ChatGPT tab is focused when Go is clicked, so a call can be delivered into a thread that has deliberately accumulated context.
+Each call's row carries its own destination control, above its **Go**.
+**In a new tab** opens a fresh ChatGPT tab with a new conversation; this is the
+default, and the bounded call the rest of this document describes.
+**In the conversation I am in** binds whichever ChatGPT tab is focused when Go
+is clicked, so a call can be delivered into a thread that has deliberately
+accumulated context.
 
 They are different products, not a convenience. A call sent into an existing thread is answered by a model that has already been argued with in that thread: intended in a conductor call, a contaminant in a bounded one. Decide which you are preparing before you prepare it, because a conductor request written to lean on prior context arrives incoherent in a fresh conversation, and a bounded request answered inside a long thread is no longer unsteered.
 
-**Resume** reads the control too, rather than assuming a fresh tab. What persists across a browser restart is the control's own position, not the mode any particular call was sent with — nothing records that per call, because the handoff that named the bound tab dies with the session. So Resume delivers to whatever the panel says *now*. Set the control before clicking either button, and set it again before resuming a call you started before a restart.
+The destination is per call, not one setting shared by the panel. That mattered
+the moment two calls could run at once: a single control meant the second call
+inherited an answer given about the first. The last choice made is offered as
+the next call's default, which is a suggestion and not a decision already taken.
+
+**Resume** asks again rather than assuming. A browser restart destroys the
+binding between a call and its conversation, and nothing records it per call —
+the handoff that named the bound tab dies with the session. Resuming a conductor
+call into a fresh tab would silently discard the thread the mode existed to
+keep, so the button stays disabled until a destination is chosen for that call.
+
+### Sending the same request again
+
+A finished call cannot be sent again: `go` takes a `PREPARED` exchange alone.
+**Prepare a copy** on a finished row builds a new exchange from the same inputs
+and leaves the original exactly as it is — its response is the only copy of work
+the model already did. The copy appears in the top list as a prepared call, and
+sending it is a separate, deliberate **Go**.
+
+This is the only way back for a `STOPPED` call, which nothing else accepts:
+`go`, `done` and `repair` all refuse it.
 
 The refusals are deliberate and none of them fall back. Sending into the current conversation is refused when there is no focused tab, when the focused tab cannot be proven to be `https://chatgpt.com/`, and when that conversation is already running another call. An unreadable tab address means the extension's `chatgpt.com` permission was declined; reload the extension and accept the prompt. Nothing about this reaches the companion, which takes `tab_id` as an opaque integer.
 
@@ -459,7 +504,7 @@ When validation reports `INCOMPLETE`, the cause is usually mechanical rather tha
 A correction round diagnoses the exact defects and sends them back into the same conversation.
 
 1. `.\gptwebcall.cmd defects --exchange <exchange_id>` lists every defect as a structured record with `kind`, `target`, `expected`, and `observed`. It reads only; it changes nothing.
-2. The side panel's **Send correction round** button calls `call.repair`. The companion writes `repair\ROUND_N_PROMPT.txt` and `repair\ROUND_N_DEFECTS.json` inside the exchange, records the round in the manifest, and re-arms monitoring with a fresh download baseline.
+2. The **Open correction round** button, inside that call's own row in the side panel, calls `call.repair`. The companion writes `repair\ROUND_N_PROMPT.txt` and `repair\ROUND_N_DEFECTS.json` inside the exchange, records the round in the manifest, and re-arms monitoring with a fresh download baseline.
 3. The extension types the correction prompt into the composer of the bound tab and stops. It never presses Send. The operator reviews the prompt and sends it. If the composer cannot be found, the prompt is still written to disk and shown in the side panel with a copy control.
 4. ChatGPT returns corrected files into the same conversation. Files that already validated are left alone.
 5. Click **Done and validate** again.
@@ -484,6 +529,7 @@ Rules:
 .\gptwebcall.cmd stop --exchange <exchange_id>
 .\gptwebcall.cmd delete --exchange <exchange_id>
 .\gptwebcall.cmd delete --exchange <exchange_id> --force
+.\gptwebcall.cmd clone --exchange <exchange_id>
 .\gptwebcall.cmd validate --exchange <exchange_id>
 .\gptwebcall.cmd defects --exchange <exchange_id>
 .\gptwebcall.cmd repair --exchange <exchange_id> --tab <tab_id>
@@ -498,6 +544,7 @@ Rules:
 - `done`: stop and deterministically validate one active call without the extension.
 - `stop`: abandon one active call and record `STOPPED` without deleting evidence.
 - `delete`: remove one exchange from disk entirely and free the deliverable names it claimed.
+- `clone`: prepare the same request again as a new exchange, leaving the finished one untouched. Refused unless the source is `COMPLETE`, `INCOMPLETE` or `STOPPED` — a call that can still receive files has not finished, and it still holds its deliverable names. This is the only route out of `STOPPED`, which `go`, `done` and `repair` each refuse.
 - `validate`: validate response files placed by hand into a non-active exchange. This is a manual-fallback step, not a pre-send check; it refuses a prepared call that nothing has answered. To inspect a call before sending it, use `show`.
 - `defects`: report every validation defect in a delivered response without changing anything.
 - `repair`: open a correction round, write its prompt and defect record, and re-arm monitoring.
@@ -566,7 +613,7 @@ already released its names, so it blocks nothing.
 
 If Chrome or the extension restarts while a call is active:
 
-- Before the operator sent the request: reopen the side panel and click **Resume attachment**. The extension opens a new ChatGPT tab, rebinds the same exchange, and waits for the operator's real Attach click. It never sends automatically.
+- Before the operator sent the request: reopen the side panel, click the call's row, choose a destination, and click **Resume attachment**. The extension resolves that destination the same way Go does, rebinds the same exchange, and waits for the operator's real Attach click. It never sends automatically. The destination has to be chosen because the restart destroyed the record of which conversation the call was in.
 - After the operator sent the request: do not resend it blindly. Download the outputs, place them manually if monitoring was lost, then use `done` for the active exchange.
 - To abandon the interrupted call: use the side-panel Stop action or `.\gptwebcall.cmd stop`.
 

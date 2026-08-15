@@ -54,10 +54,10 @@ the pre-send check — not `validate`.
 
 ## 3. Operator round trip
 
-Ask the operator: side panel → destination set to **Send in a new
-conversation** → **Go** → ChatGPT's **Attach files** → **Send** → download the
-one named archive → **Done and validate**. The extension attaches and types the
-launch line; it never sends.
+Ask the operator: side panel → click the call's row in the top list →
+destination set to **In a new tab** → **Go** → ChatGPT's **Attach files** →
+**Send** → download the one named archive → **Done and validate**. The extension
+attaches and types the launch line; it never sends.
 
 Watch the composer at Go. One line naming the archive and `000_READ_ME_FIRST.md`
 should appear in it by itself. If the panel shows that line with a copy button

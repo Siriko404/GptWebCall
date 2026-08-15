@@ -100,19 +100,24 @@ class ProtocolTests(unittest.TestCase):
         """
         protocol = (self.root / "WEB_CALL_PROTOCOL.md").read_text(encoding="utf-8")
 
-        self.assertIn("Send in a new conversation", protocol)
-        self.assertIn("Send in the conversation I am in", protocol)
+        self.assertIn("In a new tab", protocol)
+        self.assertIn("In the conversation I am in", protocol)
+        # The control belongs to the call, not to the panel. One shared setting
+        # meant the second of two running calls inherited an answer given about
+        # the first.
+        self.assertIn("The destination is per call", protocol)
         # Resume once created a fresh tab unconditionally, which silently threw
-        # away the thread a conductor call was bound to. It reads the control
-        # now - but the control, not the call, is what carries the mode, and
-        # saying otherwise would promise a memory the code does not have.
-        self.assertIn("**Resume** reads the control too", protocol)
-        self.assertIn("not the mode any particular call was sent with", protocol)
+        # away the thread a conductor call was bound to. Nothing records the
+        # mode per call - the handoff naming the bound tab dies with the session
+        # - so recovery asks again rather than promising a memory the code does
+        # not have.
+        self.assertIn("**Resume** asks again rather than assuming", protocol)
+        self.assertIn("nothing records it per call", protocol)
 
         prep = (
             self.root / "skill" / "webcall" / "skills" / "prep" / "SKILL.md"
         ).read_text(encoding="utf-8")
-        self.assertIn("Send in the conversation I am in", prep)
+        self.assertIn("In the conversation I am in", prep)
 
     def test_the_package_rule_is_one_zip_each_way_everywhere_it_is_stated(self):
         """One shape, stated the same way in every document a session reads.

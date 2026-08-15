@@ -29,10 +29,12 @@ applies in both, without exception.** Conductor mode permits relying on shared
 history. It never permits shipping a preferred conclusion. The thread having
 context is not licence to tell it what to think.
 
-Say in one line which mode you prepared, and set the side panel to match —
-a conductor call sent to a new conversation arrives without the context it was
-written to assume, and a bounded call sent into a live thread is answered by a
-model that has already been argued with.
+Say in one line which mode you prepared, and tell the operator to set that
+call's own destination to match — a conductor call sent to a new conversation
+arrives without the context it was written to assume, and a bounded call sent
+into a live thread is answered by a model that has already been argued with.
+The control lives inside the call's row, so it is set per call and cannot be
+inherited from whatever the last call used.
 
 ## Do
 
@@ -105,9 +107,9 @@ model that has already been argued with.
    exactly the one inputs ZIP, and the packaged input names matching intent. Do
    not run `validate` — it refuses an unanswered call by design.
 10. **Hand off.** Give the exchange ID and one next action: open the side panel,
-    set the destination to match the mode you prepared — *Send in a new
-    conversation* for bounded, *Send in the conversation I am in* for conductor,
-    with the intended thread focused — select the call, click **Go**. Attach,
+    click the call's row in the top list, set its destination to match the mode
+    you prepared — *In a new tab* for bounded, *In the conversation I am in* for
+    conductor, with the intended thread focused — then click **Go**. Attach,
     Send, downloads, and Done stay with the operator.
 
 ## Refuse

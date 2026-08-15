@@ -1,5 +1,5 @@
 ---
-description: Every other GPT Web Call action — status, health, finish, recover, repair, stop, delete, manual, watch, local
+description: Every other GPT Web Call action — status, health, finish, recover, repair, stop, delete, clone, manual, watch, local
 ---
 
 Read `${CLAUDE_PLUGIN_ROOT}/references/OPERATING_CORE.md`, then follow

@@ -11,6 +11,7 @@ from typing import TextIO
 from companion.core import (
     _exchange_dir,
     _read_json_object,
+    clone_call,
     delete_call,
     list_ready_calls,
     load_active_calls,
@@ -60,6 +61,8 @@ def run(
             result = stop_call(root, options.exchange)
         elif command == "delete":
             result = delete_call(root, options.exchange, options.force)
+        elif command == "clone":
+            result = clone_call(root, options.exchange, datetime.now().astimezone())
         elif command == "validate":
             result = finalize_exchange(
                 root, options.exchange, _downloads_dir(options.downloads_dir)
@@ -134,6 +137,11 @@ def _parser() -> argparse.ArgumentParser:
     delete = subcommands.add_parser("delete", exit_on_error=False)
     delete.add_argument("--exchange", required=True)
     delete.add_argument("--force", action="store_true")
+    # Send a finished call again. The panel has this as "Prepare a copy"; it is
+    # here too because the extension can be disabled, and without it a STOPPED
+    # exchange has no route at all — go, done and repair each refuse one.
+    clone = subcommands.add_parser("clone", exit_on_error=False)
+    clone.add_argument("--exchange", required=True)
     validate = subcommands.add_parser("validate", exit_on_error=False)
     validate.add_argument("--exchange", required=True)
     validate.add_argument("--downloads-dir", default=None)

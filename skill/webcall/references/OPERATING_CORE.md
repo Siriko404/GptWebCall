@@ -188,7 +188,7 @@ rejected, and only warranted conclusions integrated.
 
 For anything infrequent, read the matching section of the installed
 `WEB_CALL_PROTOCOL.md` or the source itself. The complete CLI surface is
-`prepare`, `list`, `show`, `active`, `done`, `stop`, `delete`, `validate`,
-`defects`, `repair`, `wait`. **There is no CLI `health` command**; `health` is a
+`prepare`, `list`, `show`, `active`, `done`, `stop`, `delete`, `clone`,
+`validate`, `defects`, `repair`, `wait`. **There is no CLI `health` command**; `health` is a
 native-host message the extension uses for its status dot.
 `[companion/cli.py:95-121; companion/native_host.py; extension/service_worker.js]`

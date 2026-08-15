@@ -8,7 +8,7 @@ import zipfile
 from pathlib import Path
 
 from companion.cli import run
-from companion.core import start_call
+from companion.core import start_call, stop_call
 
 
 class CLITests(unittest.TestCase):
@@ -75,6 +75,41 @@ class CLITests(unittest.TestCase):
         self.assertEqual((code, error), (0, ""))
         shown = json.loads(output)
         self.assertEqual(shown["result"]["request_id"], "request_cli")
+
+    def test_clone_reaches_a_stopped_call_without_the_extension(self):
+        """The manual fallback has to reach this too.
+
+        A STOPPED exchange is refused by go, done and repair alike, so with the
+        extension disabled it had no route at all. Cloning is the route, and it
+        leaves the original where it is.
+        """
+        code, output, _ = self.invoke("prepare", "--spec", str(self.spec_path))
+        self.assertEqual(code, 0)
+        exchange_id = json.loads(output)["result"]["exchange_id"]
+        # A call reaches STOPPED through the panel — the CLI has no `go`, so it
+        # cannot stop what it never started. The CLI is the way out, not in.
+        start_call(self.root, exchange_id, 11, [])
+        stop_call(self.root, exchange_id)
+
+        code, output, error = self.invoke("clone", "--exchange", exchange_id)
+
+        self.assertEqual((code, error), (0, ""))
+        clone = json.loads(output)["result"]
+        self.assertEqual(clone["state"], "PREPARED")
+        self.assertEqual(clone["cloned_from"], exchange_id)
+        self.assertNotEqual(clone["exchange_id"], exchange_id)
+        # The original keeps its state; nothing about it was rewritten.
+        code, output, _ = self.invoke("show", "--exchange", exchange_id)
+        self.assertEqual(json.loads(output)["result"]["state"], "STOPPED")
+
+    def test_clone_refuses_a_call_that_has_not_finished(self):
+        code, output, _ = self.invoke("prepare", "--spec", str(self.spec_path))
+        exchange_id = json.loads(output)["result"]["exchange_id"]
+
+        code, _, error = self.invoke("clone", "--exchange", exchange_id)
+
+        self.assertNotEqual(code, 0)
+        self.assertIn("has not finished", error)
 
     def test_show_rejects_path_traversal(self):
         code, output, error = self.invoke("show", "--exchange", "../escape")
