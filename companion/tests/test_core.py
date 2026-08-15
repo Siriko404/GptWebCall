@@ -326,9 +326,10 @@ class CoreTests(unittest.TestCase):
         self.assertTrue(resumed["monitoring"])
         self.assertEqual(resumed["exchange_id"], call["exchange_id"])
 
-    def test_the_archive_row_separates_delivery_from_the_responder_s_verdict(self):
-        """The one case a single word gets wrong: everything arrived, every hash
-        checked out, and the report inside says the work was BLOCKED."""
+    def test_the_archive_row_reports_the_delivery_and_not_the_work(self):
+        """The panel reports on the pipe. What the responder said about its own
+        work is in the report on disk, which the operator reads; a row that
+        relayed it turned an intact delivery into one that looks failed."""
         call = prepare_call(self.root, self.spec(), self.now)
         exchange = self.root / "calls" / call["exchange_id"]
         manifest_path = exchange / "EXCHANGE_MANIFEST.json"
@@ -344,24 +345,8 @@ class CoreTests(unittest.TestCase):
         [row] = list_recent_calls(self.root)
 
         self.assertEqual(row["state"], "COMPLETE")
-        self.assertEqual(row["response_status"], "BLOCKED")
-
-    def test_an_unreadable_report_leaves_the_row_saying_nothing(self):
-        """Not saying is different from saying it is fine."""
-        call = prepare_call(self.root, self.spec(), self.now)
-        exchange = self.root / "calls" / call["exchange_id"]
-        manifest_path = exchange / "EXCHANGE_MANIFEST.json"
-        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-        manifest["state"] = "COMPLETE"
-        manifest_path.write_text(json.dumps(manifest) + "\n", encoding="utf-8")
-        (exchange / "validation").mkdir(exist_ok=True)
-        (exchange / "validation" / "VALIDATION_REPORT.json").write_text(
-            "{ truncated", encoding="utf-8"
-        )
-
-        [row] = list_recent_calls(self.root)
-
-        self.assertIsNone(row["response_status"])
+        self.assertNotIn("response_status", row)
+        self.assertNotIn("manifest_verified", row)
 
     def test_the_archive_is_not_a_window_twelve_calls_wide(self):
         """The panel presents this list as every past call, so twelve was a

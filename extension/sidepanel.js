@@ -22,7 +22,6 @@ import {
   formatElapsed,
   downloadGuard,
   describeDownloadFailure,
-  resultFacts,
 } from "./lib/panel.js";
 
 const el = (id) => document.querySelector(`#${id}`);
@@ -336,13 +335,9 @@ async function archiveDrawer(drawer, item) {
   }
   pending.remove();
 
-  if (inspect.validation) {
-    const facts = document.createElement("div");
-    facts.className = "facts";
-    renderFactsInto(facts, inspect.validation);
-    drawer.append(facts);
-  }
-
+  /* Delivery only. The responder's account of its own work and the hash
+   * verdict were shown here as two more facts; they are in the validation
+   * report on disk, and the panel's business is whether the files arrived. */
   const rows = [
     ["request", inspect.request_id],
     ["created", inspect.created_at],
@@ -525,23 +520,6 @@ function fileChecklist(files) {
     list.append(item);
   }
   return list;
-}
-
-function renderFactsInto(container, report) {
-  container.replaceChildren();
-  for (const fact of resultFacts(report)) {
-    const box = document.createElement("div");
-    box.className = `fact ${fact.tone}`;
-    const label = document.createElement("span");
-    label.className = "fact-label";
-    label.textContent = fact.label;
-    const value = document.createElement("span");
-    value.className = "fact-value";
-    value.textContent = fact.value;
-    box.append(label, value);
-    box.title = fact.detail;
-    container.append(box);
-  }
 }
 
 /* The diagnosis a correction round would send, shown before deciding whether to

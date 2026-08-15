@@ -360,23 +360,6 @@ def _assert_deliverable_names_are_free(
             )
 
 
-def _reported_status(exchange: Path) -> str | None:
-    """What the responder said about its own work, or None if it did not say.
-
-    Unreadable is not a verdict: a report that will not parse leaves the row
-    saying nothing rather than saying it is fine.
-    """
-    report_path = exchange / "validation" / "VALIDATION_REPORT.json"
-    if not report_path.is_file():
-        return None
-    try:
-        report = _read_json_object(report_path, "VALIDATION_REPORT")
-    except ValueError:
-        return None
-    status = report.get("response_status")
-    return str(status) if isinstance(status, str) and status else None
-
-
 def list_ready_calls(root: Path) -> list[dict[str, Any]]:
     calls_dir = Path(root).resolve() / "calls"
     if not calls_dir.exists():
@@ -394,16 +377,14 @@ def list_recent_calls(root: Path, limit: int = _RECENT_LIMIT) -> list[dict[str, 
 
     Exchange ids begin with their timestamp, so sorting the name sorts the time.
 
-    A row carries two verdicts, not one. `state` is this end of the exchange:
-    whether the delivery arrived and its declared hashes checked out. It is the
-    manifest's own word and costs nothing to read. `response_status` is the
-    responder's self-assessment, and the two disagree in the case that matters -
-    a delivery that arrived perfectly carrying a report which says the work was
-    BLOCKED. A row showing COMPLETE alone would call that a success.
-
-    The report is opened only for a COMPLETE exchange, because that is the only
-    state whose row can be wrong in that direction. INCOMPLETE and STOPPED
-    already say the call needs attention, and a PREPARED one has no report.
+    A row carries the delivery verdict and nothing about the work. `state` is
+    this end of the exchange: whether every promised file arrived and matched
+    the hash declared for it. What the responder said about its own work is in
+    the validation report, which the operator reads; the panel reports on the
+    pipe. A row briefly carried `response_status` too, so a COMPLETE delivery of
+    self-declared PARTIAL work showed as PARTIAL - which makes an intact
+    delivery worth reading look like a failure, the exact misreading the three
+    separate facts existed to prevent.
     """
     calls_dir = Path(root).resolve() / "calls"
     if not calls_dir.exists():
@@ -411,20 +392,14 @@ def list_recent_calls(root: Path, limit: int = _RECENT_LIMIT) -> list[dict[str, 
     recent: list[dict[str, Any]] = []
     for manifest_path in calls_dir.glob("*/EXCHANGE_MANIFEST.json"):
         manifest = _read_json_object(manifest_path, "EXCHANGE_MANIFEST")
-        state = manifest.get("state")
         recent.append(
             {
                 "exchange_id": manifest.get("exchange_id"),
                 "subject": manifest.get("subject"),
                 "request_id": manifest.get("request_id"),
-                "state": state,
+                "state": manifest.get("state"),
                 "created_at": manifest.get("created_at"),
                 "cloned_from": manifest.get("cloned_from") or None,
-                "response_status": (
-                    _reported_status(manifest_path.parent)
-                    if state == "COMPLETE"
-                    else None
-                ),
                 "repair_round": int(manifest.get("repair_round", 0) or 0),
             }
         )

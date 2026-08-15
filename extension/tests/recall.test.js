@@ -7,49 +7,41 @@ import { archiveVerdict } from "../lib/panel.js";
 const read = (name) => readFile(new URL(`../${name}`, import.meta.url), "utf8");
 
 
-/* The report has always carried three independent facts and the panel showed
- * one word. The operator read a PARTIAL-but-intact delivery as a failure once
- * already; a byte-perfect delivery of declared-partial work is COMPLETE
- * delivery, PARTIAL work, verified hashes, and no single word says that.
+/* The panel reports on the pipe, not on the answer. Delivery is the half this
+ * end of the exchange can prove: every promised file arrived, and each matched
+ * the hash declared for it. What the responder said about its own work, and
+ * whether the declared hashes were usable, are in the validation report on
+ * disk — the operator reads them there.
+ *
+ * A version of this panel showed all three side by side, and a version demoted
+ * a COMPLETE delivery to amber when the responder called its own work PARTIAL.
+ * Both are the same mistake in opposite directions: the panel grading an answer
+ * it cannot see, and an intact delivery worth reading looking like a failure.
  */
-test("an opened call renders three separate facts", async () => {
+test("the panel shows delivery state and never work or hashes", async () => {
   const panel = await read("sidepanel.js");
+  const lib = await read("lib/panel.js");
 
-  assert.match(panel, /resultFacts\(report\)/);
-  assert.match(panel, /renderFactsInto\(facts, inspect\.validation\)/);
-  // Not a single status pill standing in for all three.
-  assert.doesNotMatch(panel, /resultStatus/);
+  for (const source of [panel, lib]) {
+    assert.doesNotMatch(source, /resultFacts/);
+    assert.doesNotMatch(source, /manifest_verified/);
+    assert.doesNotMatch(source, /response_status/);
+  }
 });
 
 
-/* A row has room for one word, and the archive still must not lie with it.
- * Delivery leads because it is the half this end can prove; a responder that
- * called its own work PARTIAL or BLOCKED demotes the row from good to
- * needs-a-look, which is the misreading that started all of this. */
-test("an archive row never calls declared-partial work a success", () => {
-  assert.deepEqual(
-    archiveVerdict({ state: "COMPLETE", responseStatus: "COMPLETE" }),
-    { label: "COMPLETE", tone: "ok" },
-  );
+test("an archive row carries the delivery verdict, and only that", () => {
+  assert.deepEqual(archiveVerdict({ state: "COMPLETE" }), { label: "COMPLETE", tone: "ok" });
+  assert.deepEqual(archiveVerdict({ state: "INCOMPLETE" }), { label: "INCOMPLETE", tone: "bad" });
+  assert.deepEqual(archiveVerdict({ state: "STOPPED" }), { label: "STOPPED", tone: "" });
+  assert.deepEqual(archiveVerdict({}), { label: "—", tone: "" });
+
+  // An intact delivery of self-declared partial work reads as delivered, which
+  // is what it is. The gaps are in the response, and that is where they belong.
   assert.deepEqual(
     archiveVerdict({ state: "COMPLETE", responseStatus: "PARTIAL" }),
-    { label: "PARTIAL", tone: "wait" },
-  );
-  assert.deepEqual(
-    archiveVerdict({ state: "COMPLETE", responseStatus: "BLOCKED" }),
-    { label: "BLOCKED", tone: "wait" },
-  );
-  // A delivery that did not arrive intact says so regardless of the report.
-  assert.deepEqual(
-    archiveVerdict({ state: "INCOMPLETE", responseStatus: "COMPLETE" }),
-    { label: "INCOMPLETE", tone: "bad" },
-  );
-  // No report read at all is not a verdict of fine.
-  assert.deepEqual(
-    archiveVerdict({ state: "COMPLETE", responseStatus: null }),
     { label: "COMPLETE", tone: "ok" },
   );
-  assert.deepEqual(archiveVerdict({ state: "STOPPED" }), { label: "STOPPED", tone: "" });
 });
 
 

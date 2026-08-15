@@ -303,34 +303,7 @@ button:disabled { cursor: not-allowed; color: var(--faint); border-color: var(--
   line-height: 1.5;
 }
 
-/* ---------- results: three lines, three truths ---------- */
-
-.facts { display: grid; gap: 0; }
-
-.fact {
-  display: flex;
-  gap: 12px;
-  align-items: baseline;
-  justify-content: space-between;
-  padding: 7px 0;
-  border-bottom: 1px solid var(--line-soft);
-}
-
-.fact:last-child { border-bottom: 0; }
-
-.fact-label {
-  color: var(--faint);
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-}
-
-.fact-value { font-family: var(--mono); font-size: 12px; }
-.fact.ok .fact-value { color: var(--green); }
-.fact.wait .fact-value { color: var(--amber); }
-.fact.bad .fact-value { color: var(--red); }
-.fact.neutral .fact-value { color: var(--muted); }
+/* ---------- results ---------- */
 
 .result-list {
   display: grid;

@@ -76,7 +76,6 @@ export function callCentre(state = {}) {
       state: row.state ?? "",
       requestId: row.request_id ?? null,
       createdAt: row.created_at ?? null,
-      responseStatus: row.response_status ?? null,
       clonedFrom: row.cloned_from ?? null,
       repairRound: row.repair_round ?? 0,
     }));
@@ -85,25 +84,24 @@ export function callCentre(state = {}) {
 }
 
 
-/* What a finished row says about itself, in one word and one colour.
+/* What a finished row says about itself: the delivery, and nothing else.
  *
- * The delivery verdict leads, because that is the one this end of the exchange
- * can prove. A responder that said its own work was PARTIAL or BLOCKED demotes
- * the row from good to needs-a-look: everything arrived, and it is still not
- * the answer that was asked for. Saying COMPLETE alone there is the single
- * misreading this panel exists to prevent.
+ * The panel reports on the pipe, not on the answer. Delivery is the half this
+ * end of the exchange can prove - every promised file arrived, and each one
+ * matched the hash declared for it. Whether the work is any good is in the
+ * response, which the operator reads; a panel that grades it is guessing with
+ * the responder's own marking.
+ *
+ * An earlier version demoted a COMPLETE delivery to amber when the responder
+ * called its own work PARTIAL. That is the thing this must not do: it turns an
+ * intact delivery worth reading into a row that looks like a failure, which is
+ * the exact misreading that started all of this.
  */
 export function archiveVerdict(row = {}) {
-  if (row.state !== "COMPLETE") {
-    return {
-      label: row.state || "—",
-      tone: row.state === "INCOMPLETE" ? "bad" : "",
-    };
-  }
-  if (row.responseStatus && row.responseStatus !== "COMPLETE") {
-    return { label: row.responseStatus, tone: "wait" };
-  }
-  return { label: "COMPLETE", tone: "ok" };
+  return {
+    label: row.state || "—",
+    tone: row.state === "COMPLETE" ? "ok" : row.state === "INCOMPLETE" ? "bad" : "",
+  };
 }
 
 export function formatBytes(bytes) {
@@ -161,64 +159,6 @@ export function downloadGuard(progress, forced = false) {
       "Done stops monitoring, so anything still downloading will not be collected.",
     doneLabel: `Done and validate (${progress.received}/${progress.expected})`,
   };
-}
-
-
-/* The report carries three independent facts that were being read as one word.
- *
- * `status` is the delivery: did every promised file arrive intact. `response_
- * status` is the responder's own account of the work. `manifest_verified` says
- * whether the declared hashes were usable. A PARTIAL piece of work delivered
- * intact is COMPLETE + PARTIAL + true, and collapsing that into any single
- * word has already misled the operator once. The panel therefore renders all
- * three, each with its own tone, and this function is the one place the
- * mapping lives.
- */
-export function resultFacts(report) {
-  if (!report || typeof report !== "object") {
-    return [];
-  }
-  const delivery = report.status ?? null;
-  const work = report.response_status ?? null;
-  const manifest = report.manifest_verified;
-  return [
-    {
-      key: "delivery",
-      label: "Delivery",
-      value: delivery ?? "—",
-      tone: delivery === "COMPLETE" ? "ok" : delivery === "INCOMPLETE" ? "bad" : "neutral",
-      detail:
-        delivery === "COMPLETE"
-          ? "Every promised file arrived intact."
-          : delivery === "INCOMPLETE"
-            ? "A promised file is missing or corrupt."
-            : "No delivery verdict.",
-    },
-    {
-      key: "work",
-      label: "Work",
-      value: work ?? "unreported",
-      tone: work === "COMPLETE" ? "ok" : work === "PARTIAL" ? "wait" : work === "BLOCKED" ? "bad" : "neutral",
-      detail:
-        work === "PARTIAL"
-          ? "The responder declared gaps. Read them; do not repair an intact delivery."
-          : work === "BLOCKED"
-            ? "The responder said it could not do the work."
-            : work === "COMPLETE"
-              ? "The responder's own account of the work."
-              : "The responder did not report on its work.",
-    },
-    {
-      key: "manifest",
-      label: "Hashes",
-      value: manifest === true ? "verified" : manifest === false ? "unusable" : "—",
-      tone: manifest === true ? "ok" : manifest === false ? "wait" : "neutral",
-      detail:
-        manifest === false
-          ? "Declared hashes could not be used; read before trusting."
-          : "Each file checked against the hash the responder declared.",
-    },
-  ];
 }
 
 
