@@ -6,77 +6,28 @@ import { chooseTargetTab } from "../lib/target.js";
 const chatTab = { id: 7, url: "https://chatgpt.com/c/abc-123" };
 
 
-/* This used to assert {create: true} unconditionally — every call opened a tab,
- * so twenty calls left twenty ChatGPT tabs behind. A conversation is a page, not
- * a window: a tab is created only when there is no ChatGPT tab to reuse. */
-test("a fresh conversation opens a tab only when there is none to reuse", () => {
-  assert.deepEqual(chooseTargetTab({ mode: "new" }), { create: true });
-  // An absent or unrecognised mode must not silently bind a live tab, and must
-  // not navigate one either.
+test("the default opens a fresh conversation", () => {
+  assert.deepEqual(chooseTargetTab({ mode: "new", activeTab: chatTab }), { create: true });
+  // An absent or unrecognised mode must not silently bind a live tab.
   assert.deepEqual(chooseTargetTab({}), { create: true });
-  assert.deepEqual(chooseTargetTab({ mode: "nonsense" }), { create: true });
+  assert.deepEqual(chooseTargetTab({ mode: "nonsense", activeTab: chatTab }), { create: true });
 });
 
 
-test("a fresh conversation reuses an open ChatGPT tab", () => {
-  assert.deepEqual(
-    chooseTargetTab({ mode: "new", chatgptTabs: [chatTab] }),
-    { create: false, tabId: 7, navigate: true },
-  );
-});
-
-
-/* The window the operator is looking at is where they will expect the call to
- * appear, so the focused tab wins over one buried in another window. */
-test("a fresh conversation prefers the focused ChatGPT tab", () => {
-  assert.deepEqual(
-    chooseTargetTab({
-      mode: "new",
-      activeTab: chatTab,
-      chatgptTabs: [{ id: 3, url: "https://chatgpt.com/" }, chatTab],
-    }),
-    { create: false, tabId: 7, navigate: true },
-  );
-});
-
-
-/* Same rule as conductor mode, different consequence: taking a tab that is
- * running a call would navigate its conversation away mid-delivery. */
-test("a fresh conversation never takes a tab running a call", () => {
-  const handoffs = { "ex-1": { tabId: 7, exchangeId: "ex-1" } };
-
-  assert.deepEqual(
-    chooseTargetTab({ mode: "new", activeTab: chatTab, chatgptTabs: [chatTab], handoffs }),
-    { create: true },
-  );
+/* A new conversation is a new tab. This was once "improved" into reusing an
+ * open ChatGPT tab and navigating it to the root — fewer tabs, and the wrong
+ * behaviour: it takes over the window the operator was reading, to deliver a
+ * call they asked to arrive somewhere new. The tab is the point.
+ *
+ * Nothing here may consult the tabs that happen to be open. A fresh
+ * conversation does not depend on what else is on screen.
+ */
+test("a new conversation is a new tab, never one that is already open", () => {
   assert.deepEqual(
     chooseTargetTab({
       mode: "new",
       activeTab: chatTab,
       chatgptTabs: [chatTab, { id: 8, url: "https://chatgpt.com/" }],
-      handoffs,
-    }),
-    { create: false, tabId: 8, navigate: true },
-  );
-});
-
-
-/* The focused tab is usually not ChatGPT at all — the operator is in their
- * editor. That is a reason to look further, not a reason to refuse. */
-test("a fresh conversation ignores a focused tab that is not ChatGPT", () => {
-  assert.deepEqual(
-    chooseTargetTab({
-      mode: "new",
-      activeTab: { id: 4, url: "https://example.com/" },
-      chatgptTabs: [chatTab],
-    }),
-    { create: false, tabId: 7, navigate: true },
-  );
-  // And a lookalike host is not ChatGPT, in this direction too.
-  assert.deepEqual(
-    chooseTargetTab({
-      mode: "new",
-      chatgptTabs: [{ id: 9, url: "https://chatgpt.com.evil.test/c/1" }],
     }),
     { create: true },
   );
