@@ -67,12 +67,30 @@ test("the palette is navy and one green", async () => {
 
 /* One filled control at a time: the thing to press now. Everything else is an
  * outline, so the eye has a single target in a narrow strip. */
+/* This used to read `id="repair-button" class="accent"` out of the HTML. Every
+ * control is built in JavaScript now — the panel is a list of calls and a
+ * call's buttons depend on the state it is in — so the rule is pinned where the
+ * controls are made instead of where they used to sit.
+ *
+ * The rule itself is unchanged: one filled control, and it is the thing to
+ * press now. Filled belongs to the top list (Go, Done, Resume); a finished call
+ * is finished, so everything in its drawer is outlined.
+ */
 test("only the immediate next action is filled", async () => {
   const style = await css();
-  const html = await readFile(new URL("../sidepanel.html", import.meta.url), "utf8");
+  const panel = await readFile(new URL("../sidepanel.js", import.meta.url), "utf8");
 
   assert.match(style, /\.primary \{[^}]*background: var\(--green\)/);
-  // Correction is available, not urgent, so it is outlined rather than filled.
-  assert.match(html, /id="repair-button" class="accent"/);
   assert.doesNotMatch(style, /\.accent \{[^}]*background: var\(--green\)/);
+
+  // Correction and resend are available, not urgent.
+  assert.match(panel, /accent\("Open correction round"/);
+  assert.match(panel, /accent\("Prepare a copy"/);
+  // And the archive drawer reaches for the filled control nowhere at all.
+  const archive = panel.slice(
+    panel.indexOf("async function archiveDrawer"),
+    panel.indexOf("/* ---------- pieces"),
+  );
+  assert.ok(archive.length > 0, "the archive drawer is where this test thinks");
+  assert.doesNotMatch(archive, /primary\(/);
 });

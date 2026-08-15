@@ -99,9 +99,6 @@ main { display: block; padding: 0 16px 20px; }
 
 main > .card:first-of-type { border-top: 0; }
 
-/* The running call gets one green rule. That is the whole emphasis. */
-.lane { border-top: 1px solid var(--green-dim); }
-
 .card-head {
   display: flex;
   gap: 10px;
@@ -223,14 +220,49 @@ button:disabled { cursor: not-allowed; color: var(--faint); border-color: var(--
 
 .kv dd { user-select: all; }
 
-#launch-card.collapsed #launch-body { display: none; }
+/* ---------- the two lists ---------- */
 
-/* ---------- an in-flight call ---------- */
+.calls { display: grid; margin: 0; padding: 0; list-style: none; }
 
-.call { display: grid; gap: 8px; }
-.call + .call { margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--line-soft); }
+/* A row is a rule with a name on it. The whole width is the target, because
+   at this width a row is the only thing anyone is trying to hit. */
+.row-head {
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+  min-height: 34px;
+  padding: 8px 0;
+  border: 0;
+  border-bottom: 1px solid var(--line-soft);
+  border-radius: 0;
+  text-align: left;
+}
 
-.call-title { margin: 0; font-size: 13px; font-weight: 600; line-height: 1.3; }
+.row-head:not(:disabled):hover { border-color: var(--line); color: var(--green); }
+.row-head[aria-expanded="true"] { color: var(--green); border-bottom-color: transparent; }
+
+.row-mark {
+  flex: none;
+  width: 9px;
+  color: var(--faint);
+  font-family: var(--mono);
+}
+
+.row-head[aria-expanded="true"] .row-mark { color: var(--green); }
+.row-name { flex: 1; min-width: 0; font-size: 13px; word-break: break-word; }
+.row-state { flex: none; font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; }
+
+/* Everything a call can do, indented under the call it belongs to. */
+.row-drawer {
+  display: grid;
+  gap: 10px;
+  margin: 0 0 10px;
+  padding: 10px 0 14px 12px;
+  border-left: 1px solid var(--line);
+  border-bottom: 1px solid var(--line-soft);
+}
+
+.call-stage { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.45; }
 
 .call-id {
   color: var(--faint);
@@ -238,8 +270,6 @@ button:disabled { cursor: not-allowed; color: var(--faint); border-color: var(--
   font-size: 10px;
   word-break: break-all;
 }
-
-.call-stage { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.45; }
 
 /* The checklist is the reason this panel exists. */
 
@@ -271,16 +301,6 @@ button:disabled { cursor: not-allowed; color: var(--faint); border-color: var(--
   color: var(--amber);
   font-size: 11px;
   line-height: 1.5;
-}
-
-/* ---------- recovery ---------- */
-
-.recover-item { display: grid; gap: 6px; }
-
-.recover-item + .recover-item {
-  margin-top: 12px;
-  padding-top: 12px;
-  border-top: 1px solid var(--line-soft);
 }
 
 /* ---------- results: three lines, three truths ---------- */
@@ -352,39 +372,6 @@ button:disabled { cursor: not-allowed; color: var(--faint); border-color: var(--
   line-height: 1.55;
   white-space: pre-wrap;
   word-break: break-word;
-}
-
-/* ---------- the archive ---------- */
-
-.history { display: grid; margin: 0; padding: 0; list-style: none; }
-
-.h-row {
-  display: flex;
-  gap: 10px;
-  align-items: baseline;
-  justify-content: space-between;
-  width: 100%;
-  min-height: 30px;
-  padding: 6px 0;
-  border: 0;
-  border-bottom: 1px solid var(--line-soft);
-  border-radius: 0;
-  color: var(--muted);
-  font-size: 12px;
-  text-align: left;
-}
-
-.h-row:not(:disabled):hover { border-color: var(--line-soft); color: var(--ink); }
-.h-row[aria-expanded="true"] { color: var(--green); border-bottom-color: transparent; }
-.h-row .h-name { flex: 1; min-width: 0; word-break: break-word; }
-
-.h-drawer {
-  display: grid;
-  gap: 10px;
-  margin: 0 0 10px;
-  padding: 0 0 12px 12px;
-  border-left: 1px solid var(--line);
-  border-bottom: 1px solid var(--line-soft);
 }
 
 .error {

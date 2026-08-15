@@ -17,10 +17,6 @@ const NATIVE_HOST = "com.sina.gptwebcall";
  * composer is a page worth telling the operator about. */
 const COMPOSER_POLL_MS = 500;
 const COMPOSER_ATTEMPTS_NEW_TAB = 20;
-/* How long a reused tab gets to load a fresh conversation. Generous, because
- * failing here costs the operator a second click and typing into the wrong
- * conversation costs a message in someone's thread. */
-const NAVIGATION_TIMEOUT_MS = 15000;
 
 
 chrome.runtime.onInstalled.addListener(() => {
@@ -71,6 +67,10 @@ async function handlePanelMessage(message) {
       return finishCall(message.exchangeId);
     case "REPAIR":
       return openRepairRound(message.exchangeId);
+    case "CLONE":
+      // Prepares the same request as a new exchange. It does not send it, and
+      // it does not touch the finished call it copied.
+      return nativeCommand("call.clone", { exchange_id: message.exchangeId });
     case "INSPECT":
       // Read-only recall for one exchange. The companion returns metadata,
       // the validation report, defects, and paths — never file contents.
@@ -150,24 +150,14 @@ async function getStatus() {
  * question of which tab id we resolve here.
  */
 async function resolveTargetTab(mode) {
-  const [activeTab] = await chrome.tabs.query({
-    active: true,
-    lastFocusedWindow: true,
-  });
+  const [activeTab] = mode === "current"
+    ? await chrome.tabs.query({ active: true, lastFocusedWindow: true })
+    : [null];
   const choice = chooseTargetTab({
     mode,
     activeTab,
-    handoffs: await readHandoffs(),
-    // Only "new" looks past the focused tab, and the host permission means
-    // this query returns ChatGPT tabs alone.
-    chatgptTabs: mode === "current"
-      ? []
-      : await chrome.tabs.query({ url: `${CHATGPT_URL}*` }),
+    handoffs: mode === "current" ? await readHandoffs() : {},
   });
-  if (choice.navigate) {
-    await navigateToFreshConversation(choice.tabId);
-    return { id: choice.tabId };
-  }
   if (!choice.create) {
     return { id: choice.tabId };
   }
@@ -176,46 +166,6 @@ async function resolveTargetTab(mode) {
     throw new Error("Chrome did not create a usable ChatGPT tab");
   }
   return created;
-}
-
-
-/* Navigate a reused tab and wait for it to land.
- *
- * Not waiting is a correctness bug, not a slow start: the tab being reused is
- * usually showing a conversation already, so a composer exists on it before the
- * new conversation's does. Typing straight away puts the launch line into the
- * thread being navigated away from — a real message in a real conversation the
- * operator did not choose.
- *
- * The listener is registered before the navigation starts, because the
- * transition is the thing being watched and it is missed otherwise. Giving up
- * throws, and that is safe: this runs before call.go, so nothing has started
- * and the operator can click Go again.
- */
-function navigateToFreshConversation(tabId) {
-  return new Promise((resolve, reject) => {
-    const stop = (finish) => {
-      chrome.tabs.onUpdated.removeListener(onUpdated);
-      clearTimeout(timer);
-      finish();
-    };
-    const onUpdated = (updatedId, changeInfo) => {
-      if (updatedId === tabId && changeInfo.status === "complete") {
-        stop(resolve);
-      }
-    };
-    const timer = setTimeout(
-      () => stop(() => reject(new Error(
-        "The ChatGPT tab did not finish loading a new conversation. Try Go "
-        + "again, or open a ChatGPT tab yourself.",
-      ))),
-      NAVIGATION_TIMEOUT_MS,
-    );
-    chrome.tabs.onUpdated.addListener(onUpdated);
-    chrome.tabs
-      .update(tabId, { url: CHATGPT_URL, active: true })
-      .catch((error) => stop(() => reject(error)));
-  });
 }
 
 

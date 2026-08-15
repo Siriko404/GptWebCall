@@ -18,6 +18,94 @@ export function describeStage(status) {
   return STAGES[status] ?? String(status ?? "Running.");
 }
 
+
+/* The panel is two lists of calls: the ones that need something, and the ones
+ * that are over. This decides which is which, and gathers everything a row
+ * needs from the four separate sources the companion and the browser report.
+ *
+ * A call appears once. `recent` is every exchange including the prepared and
+ * the running ones, so the archive is what is left after the top list has
+ * taken what it needs — otherwise a running call is in the panel twice, once
+ * as work and once as history.
+ *
+ * needsResume is per call, not per panel. A browser restart destroys the
+ * binding between a call and its conversation while the companion still holds
+ * the call; with several calls running, one can be lost and another not.
+ */
+export function callCentre(state = {}) {
+  const handoffById = new Map(
+    (state.handoffs ?? []).map((handoff) => [handoff.exchangeId, handoff]),
+  );
+  const progressById = new Map(
+    (state.progress ?? []).map((item) => [item.exchange_id, item]),
+  );
+
+  const now = [
+    ...(state.active ?? []).map((record) => {
+      const progress = progressById.get(record.exchange_id) ?? null;
+      const handoff = handoffById.get(record.exchange_id) ?? null;
+      return {
+        id: record.exchange_id,
+        subject: progress?.subject
+          || handoff?.subject
+          || record.request_id
+          || record.exchange_id,
+        state: "ACTIVE",
+        requestId: record.request_id ?? null,
+        record,
+        progress,
+        handoff,
+        needsResume: handoff === null,
+      };
+    }),
+    ...(state.ready ?? []).map((call) => ({
+      id: call.exchange_id,
+      subject: call.subject || call.exchange_id,
+      state: "PREPARED",
+      requestId: call.request_id ?? null,
+      call,
+    })),
+  ];
+
+  const upstairs = new Set(now.map((item) => item.id));
+  const past = (state.recent ?? [])
+    .filter((row) => !upstairs.has(row.exchange_id))
+    .map((row) => ({
+      id: row.exchange_id,
+      subject: row.subject || row.exchange_id,
+      state: row.state ?? "",
+      requestId: row.request_id ?? null,
+      createdAt: row.created_at ?? null,
+      responseStatus: row.response_status ?? null,
+      clonedFrom: row.cloned_from ?? null,
+      repairRound: row.repair_round ?? 0,
+    }));
+
+  return { now, past };
+}
+
+
+/* What a finished row says about itself, in one word and one colour.
+ *
+ * The delivery verdict leads, because that is the one this end of the exchange
+ * can prove. A responder that said its own work was PARTIAL or BLOCKED demotes
+ * the row from good to needs-a-look: everything arrived, and it is still not
+ * the answer that was asked for. Saying COMPLETE alone there is the single
+ * misreading this panel exists to prevent.
+ */
+export function archiveVerdict(row = {}) {
+  if (row.state !== "COMPLETE") {
+    return {
+      label: row.state || "—",
+      tone: row.state === "INCOMPLETE" ? "bad" : "",
+    };
+  }
+  if (row.responseStatus && row.responseStatus !== "COMPLETE") {
+    return { label: row.responseStatus, tone: "wait" };
+  }
+  return { label: "COMPLETE", tone: "ok" };
+}
+
 export function formatBytes(bytes) {
   const value = Number(bytes);
   if (!Number.isFinite(value) || value < 0) {

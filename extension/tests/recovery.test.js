@@ -2,16 +2,32 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
+import { callCentre } from "../lib/panel.js";
+
+
+/* Recovery is per call now, not a card of its own: a lost call is a row in the
+ * top list whose drawer offers Resume instead of Done. Which matters when
+ * several calls are running, because a restart can leave one bound and another
+ * not - the old single card treated recovery as a state of the whole panel. */
+test("a call the browser lost is marked, and one it still holds is not", () => {
+  const { now } = callCentre({
+    active: [{ exchange_id: "ex-1" }, { exchange_id: "ex-2" }],
+    handoffs: [{ exchangeId: "ex-2", subject: "still bound" }],
+  });
+
+  assert.deepEqual(
+    now.map((call) => [call.id, call.needsResume]),
+    [["ex-1", true], ["ex-2", false]],
+  );
+});
+
 
 test("side panel exposes an explicit user-controlled Resume action", async () => {
-  const html = await readFile(new URL("../sidepanel.html", import.meta.url), "utf8");
   const panel = await readFile(new URL("../sidepanel.js", import.meta.url), "utf8");
   const worker = await readFile(new URL("../service_worker.js", import.meta.url), "utf8");
 
-  // One recovery card, one Resume per lost call, named by its exchange id.
-  assert.match(html, /id="recovery-card"/);
   assert.match(panel, /type: "RESUME"/);
-  assert.match(panel, /exchangeId: record\.exchange_id/);
+  assert.match(panel, /exchangeId: call\.id/);
   assert.match(worker, /case "RESUME"/);
   assert.match(worker, /nativeCommand\("call\.resume"/);
 });
@@ -83,7 +99,7 @@ test("resume sends the destination, and resolves it the way Go does", async () =
   const panel = await readFile(new URL("../sidepanel.js", import.meta.url), "utf8");
   const worker = await readFile(new URL("../service_worker.js", import.meta.url), "utf8");
 
-  assert.match(panel, /mode: recoveryMode\.value/);
+  assert.match(panel, /mode: destinationFor\(call\.id\)/);
   assert.match(worker, /case "RESUME":\s*\n\s*return resumeCall\(message\.exchangeId, message\.mode\);/);
   assert.match(worker, /async function resumeCall\(exchangeId, mode\) \{\s*\n\s*const tab = await resolveTargetTab\(mode\);/);
   assert.doesNotMatch(
@@ -94,21 +110,35 @@ test("resume sends the destination, and resolves it the way Go does", async () =
 
 
 /* What a browser restart destroys is the binding to a conversation, and that
- * cannot be guessed back. The old panel resumed with whatever the shared Go
+ * cannot be guessed back. An early panel resumed with whatever the shared Go
  * dropdown happened to say, which is how a conductor call was once re-armed
- * against a blank conversation with no warning. Recovery now asks, and Resume
- * stays disabled until the operator answers.
+ * against a blank conversation with no warning. Recovery asks, and Resume stays
+ * disabled until the operator answers.
  */
 test("recovery refuses to guess the destination a restart destroyed", async () => {
-  const html = await readFile(new URL("../sidepanel.html", import.meta.url), "utf8");
   const panel = await readFile(new URL("../sidepanel.js", import.meta.url), "utf8");
 
-  // No preselected value: the first option is a disabled placeholder.
-  assert.match(html, /id="recovery-mode"/);
-  assert.match(html, /<option value="" disabled selected>/);
-  // And the button cannot be pressed until one is chosen.
-  assert.match(panel, /resume\.disabled = !recoveryMode\.value/);
-  // The recovery card only appears when the companion holds calls the browser
-  // has lost — not merely because a call is running.
-  assert.match(panel, /handoffs\.length === 0 \? activeRecords : \[\]/);
+  // Disabled until this call — not the panel, this call — has been answered
+  // for. destinationFor falls back to a remembered default, so `has` is the
+  // question being asked here and not `get`.
+  assert.match(panel, /resume\.disabled = !destinations\.has\(call\.id\)/);
+  assert.ok(
+    panel.indexOf("if (call.needsResume)") < panel.indexOf("resume.disabled"),
+    "the resume path is the one that holds its button",
+  );
+});
+
+
+/* The single shared dropdown was the real hazard in the old panel: two calls
+ * running at once read the same value, so the second inherited an answer given
+ * about the first. A destination belongs to the call it will be used for. */
+test("a destination is remembered per call, never once for the panel", async () => {
+  const panel = await readFile(new URL("../sidepanel.js", import.meta.url), "utf8");
+
+  assert.match(panel, /const destinations = new Map\(\)/);
+  assert.match(panel, /destinations\.set\(exchangeId, picker\.value\)/);
+  assert.match(panel, /function destinationFor\(exchangeId\)/);
+  // Every send resolves the destination through the call it belongs to.
+  assert.doesNotMatch(panel, /mode: goMode\.value/);
+  assert.doesNotMatch(panel, /mode: recoveryMode\.value/);
 });

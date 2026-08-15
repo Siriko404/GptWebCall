@@ -22,83 +22,35 @@
       </div>
     </header>
 
-    <main id="stack">
-      <!-- Attention lane: running calls own the top of the panel. -->
-      <section class="card lane" id="flight-card" hidden>
+    <main>
+      <!-- Two lists and nothing else. Calls that need something, then calls
+           that are over. Every row opens where it sits. -->
+      <section class="card" id="now-card">
         <div class="card-head">
           <h2>In flight</h2>
-          <span id="flight-count" class="pill"></span>
+          <span id="now-count" class="pill"></span>
         </div>
-        <div id="flight"></div>
+        <ul id="now" class="calls"></ul>
+        <p id="now-empty" class="hint" hidden>No call is prepared or running.</p>
       </section>
 
-      <!-- Restart recovery: the companion remembers calls the browser forgot. -->
-      <section class="card" id="recovery-card" hidden>
+      <section class="card" id="past-card" hidden>
         <div class="card-head">
-          <h2>Recover</h2>
-          <span class="pill wait" id="recovery-count"></span>
+          <h2>Previous</h2>
+          <span id="past-count" class="pill"></span>
         </div>
-        <p class="hint">The browser restarted. Which conversation each call was
-          in is gone — choose deliberately.</p>
-        <select id="recovery-mode" aria-label="Where to resume">
-          <option value="" disabled selected>Choose a destination…</option>
-          <option value="new">Resume in a new conversation</option>
-          <option value="current">Resume in the conversation I am in</option>
-        </select>
-        <div id="recovery-list"></div>
+        <ul id="past" class="calls"></ul>
       </section>
 
-      <!-- Ready queue: dominant when idle, tucked away while a call runs. -->
-      <section class="card" id="launch-card">
-        <div class="card-head">
-          <h2>Launch</h2>
-          <div class="head-tools">
-            <span id="ready-count" class="pill"></span>
-            <button id="launch-toggle" class="ghost" type="button" hidden>Show</button>
-          </div>
-        </div>
-        <div id="launch-body">
-          <select id="call-select" aria-label="Prepared call"></select>
-          <dl id="call-detail" class="detail"></dl>
-          <select id="go-mode" aria-label="Where to send this call">
-            <option value="new">Send in a new conversation</option>
-            <option value="current">Send in the conversation I am in</option>
-          </select>
-          <p id="go-mode-hint" class="hint"></p>
-          <button id="go-button" class="primary" type="button">Go</button>
-        </div>
-      </section>
-
-      <!-- Last result: three separate truths, never one word. -->
-      <section class="card" id="result-card" hidden>
-        <div class="card-head">
-          <h2>Last result</h2>
-          <span id="result-round" class="pill" hidden></span>
-        </div>
-        <div id="result-facts" class="facts"></div>
-        <div id="result-body"></div>
-        <ul id="defect-list" class="defects" hidden></ul>
-        <button id="repair-button" class="accent" type="button" hidden>
-          Open correction round
-        </button>
-      </section>
-
-      <section class="card" id="repair-card" hidden>
+      <!-- Text the extension has that the page would not take: a correction
+           round, or a launch line that could not be typed. -->
+      <section class="card" id="prompt-card" hidden>
         <div class="card-head">
           <h2>Prompt to send</h2>
-          <button id="copy-repair-button" class="ghost" type="button">Copy</button>
+          <button id="copy-prompt" class="ghost" type="button">Copy</button>
         </div>
         <p class="hint">Review it in ChatGPT, then click ChatGPT's own Send.</p>
-        <pre id="repair-prompt" class="code"></pre>
-      </section>
-
-      <!-- Archive: every past call, one tap from its facts. -->
-      <section class="card" id="history-card" hidden>
-        <div class="card-head">
-          <h2>Past calls</h2>
-          <span id="history-count" class="pill"></span>
-        </div>
-        <ul id="history" class="history"></ul>
+        <pre id="prompt-text" class="code"></pre>
       </section>
 
       <p id="download-failure" class="warn" hidden></p>
