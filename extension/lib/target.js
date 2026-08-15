@@ -9,13 +9,20 @@
 
 export const CHATGPT_URL = "https://chatgpt.com/";
 
-/* Returns {create: true} to open a fresh conversation, or {create: false,
- * tabId} to bind one already open. Throws with an operator-facing message when
- * the focused tab cannot safely be used.
+/* Returns {create: false, tabId} to bind a conversation already open,
+ * {create: false, tabId, navigate: true} to turn an open ChatGPT tab into a
+ * fresh conversation, or {create: true} when there is no ChatGPT tab to use.
+ * Throws with an operator-facing message when the focused tab cannot safely be
+ * used.
  */
-export function chooseTargetTab({ mode, activeTab, handoffs = {} } = {}) {
+export function chooseTargetTab({
+  mode,
+  activeTab,
+  handoffs = {},
+  chatgptTabs = [],
+} = {}) {
   if (mode !== "current") {
-    return { create: true };
+    return freshConversation(activeTab, chatgptTabs, handoffs);
   }
   if (!activeTab || !Number.isInteger(activeTab.id)) {
     throw new Error("No active tab to send into. Focus your ChatGPT conversation.");
@@ -36,9 +43,44 @@ export function chooseTargetTab({ mode, activeTab, handoffs = {} } = {}) {
       + "the prompt.",
     );
   }
-  const bound = Object.values(handoffs).find((item) => item?.tabId === activeTab.id);
+  const bound = boundCall(handoffs, activeTab.id);
   if (bound) {
     throw new Error(`That conversation is already running call ${bound.exchangeId}.`);
   }
   return { create: false, tabId: activeTab.id };
+}
+
+
+/* A fresh conversation in a tab that already exists, rather than a new tab.
+ *
+ * Every call used to open one. Twenty calls meant twenty ChatGPT tabs, and
+ * closing them was the operator's problem. A conversation is a page, not a
+ * window: navigating an open ChatGPT tab to the root gives a new conversation
+ * and leaves the old thread where it always was, in the sidebar.
+ *
+ * The focused tab is preferred when it is ChatGPT, because that is the window
+ * the operator is looking at and where they will expect the call to appear. A
+ * tab running a call is never taken - its download attribution and its armed
+ * debugger both belong to that call. When nothing is usable, a tab is created,
+ * which is also what happens when no ChatGPT tab is open at all.
+ */
+function freshConversation(activeTab, chatgptTabs, handoffs) {
+  const usable = (tab) =>
+    tab
+    && Number.isInteger(tab.id)
+    && typeof tab.url === "string"
+    && tab.url.startsWith(CHATGPT_URL)
+    && !boundCall(handoffs, tab.id);
+
+  const chosen = usable(activeTab)
+    ? activeTab
+    : chatgptTabs.find(usable);
+  return chosen
+    ? { create: false, tabId: chosen.id, navigate: true }
+    : { create: true };
+}
+
+
+function boundCall(handoffs, tabId) {
+  return Object.values(handoffs).find((item) => item?.tabId === tabId);
 }
