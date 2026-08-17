@@ -74,6 +74,8 @@ Then it carries on by itself: it watches Chrome's own profile data until the ext
 
 Rerunning `setup.py` is safe at any point: it re-checks, re-registers, and undoes nothing.
 
+**To update later, run `/webcall:update`.** It fast-forwards this checkout to the newest published release — or to `main` while there are no releases — re-registers the host and skills, and then names the two steps nothing can do for you: reloading the extension in `chrome://extensions`, and restarting Claude Code so the skills re-register. It refuses outright while a call is running, because the code it replaces is the code watching that call's downloads.
+
 If `/webcall:` is still missing after the restart, type these two lines and restart again:
 
 ```text
@@ -83,13 +85,14 @@ If `/webcall:` is still missing after the restart, type these two lines and rest
 
 ## Use it
 
-Three commands, and one loop in the browser.
+Four commands, and one loop in the browser.
 
 | | |
 |---|---|
 | `/webcall:prep` | prepare one call: unbiased request, explicit file list, unique routing names, pre-send check |
-| `/webcall:menu` | everything else — status, health, finish, recover, repair, stop, delete, manual fallback, watch, local responder |
+| `/webcall:menu` | everything else — status, health, finish, recover, repair, stop, delete, clone, manual fallback, watch, local responder |
 | `/webcall:init` | recheck the installation and smoke-test it |
+| `/webcall:update` | move to the latest published version, then say what only you can finish |
 
 Then you drive the browser half: **Go** → click ChatGPT's own **Attach files** → review what attached → **Send** → download the one archive → **Done and validate**. No skill does any of that for you, by design.
 

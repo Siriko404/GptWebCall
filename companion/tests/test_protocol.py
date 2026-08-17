@@ -19,13 +19,13 @@ class ProtocolTests(unittest.TestCase):
         protocol = (self.root / "WEB_CALL_PROTOCOL.md").read_text(encoding="utf-8")
 
         self.assertIn("It is not the operating surface", protocol)
-        for command in ("/webcall:init", "/webcall:prep", "/webcall:menu"):
+        for command in ("/webcall:init", "/webcall:prep", "/webcall:update", "/webcall:menu"):
             self.assertIn(command, protocol)
         # The human's path out stays, and stays named as the exception.
         self.assertIn("manual fallback below stays usable by hand", protocol)
 
         readme = (self.root / "README.md").read_text(encoding="utf-8")
-        for command in ("/webcall:init", "/webcall:prep", "/webcall:menu"):
+        for command in ("/webcall:init", "/webcall:prep", "/webcall:update", "/webcall:menu"):
             self.assertIn(command, readme)
         # Teaching the CLI in the README puts a second front door beside the
         # skills, which is exactly what this replaced.

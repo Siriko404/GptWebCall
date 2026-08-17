@@ -133,7 +133,7 @@ buying.
 - Executing returned scripts or active content because validation passed.
 - Retrying a failed download filing by guessing attribution. Filename is the
   only routing key; recover the file from the Downloads folder instead.
-- Inventing a fourth user-facing command. Unknown action: show the list and read
+- Inventing a fifth user-facing command. Unknown action: show the list and read
   the matching section of the installed protocol.
 
 ## Proof it worked

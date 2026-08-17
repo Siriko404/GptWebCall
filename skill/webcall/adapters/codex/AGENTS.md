@@ -1,6 +1,6 @@
 # GPT Web Call on Codex and other hosts
 
-**Install the three skills. Do not paste their contents into a session.**
+**Install the four skills. Do not paste their contents into a session.**
 
 `../../skills/init/`, `../../skills/prep/` and `../../skills/menu/` are Agent
 Skills: a folder, a `SKILL.md`, YAML frontmatter naming the skill, a markdown
