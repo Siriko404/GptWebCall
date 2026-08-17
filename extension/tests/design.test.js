@@ -48,7 +48,11 @@ test("selects are drawn by this stylesheet, popup included", async () => {
 
 
 /* Navy ground, one green. A second accent hue is how a two-colour scheme
- * becomes a five-colour one; amber and red stay, but only as status. */
+ * becomes a five-colour one; amber and red stay, but only as status.
+ *
+ * `green-deep` was added here deliberately rather than smuggled in: it is a
+ * third value of the same hue, not a new one, and it exists because "finished"
+ * and "press this now" were the same colour. */
 test("the palette is navy and one green", async () => {
   const style = await css();
 
@@ -60,8 +64,24 @@ test("the palette is navy and one green", async () => {
   assert.deepEqual(
     hues.filter((name) => !name.startsWith("navy") && !name.startsWith("line")
       && !["ink", "muted", "faint"].includes(name)),
-    ["green", "green-dim", "amber", "red"],
+    ["green", "green-deep", "green-dim", "amber", "red"],
   );
+});
+
+
+/* Bright green means act now: the Go button, and a prepared call's READY. An
+ * archive of completed calls wearing it puts a dozen equally loud greens beside
+ * the one thing the operator is meant to press.
+ *
+ * Scoped to `#past`, because the same markup renders both lists — a rule on
+ * `.row-state.ok` alone would take READY down with it. */
+test("a completed call is a quieter green than a live one", async () => {
+  const style = await css();
+
+  assert.match(style, /#past \.row-state\.ok \{[^}]*color: var\(--green-deep\)/);
+  assert.match(style, /--green-deep: #1faa52/);
+  // Not --green-dim: at 3.58:1 on the navy it is a rule colour, not a text one.
+  assert.doesNotMatch(style, /#past \.row-state\.ok \{[^}]*var\(--green-dim\)/);
 });
 
 

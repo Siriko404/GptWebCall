@@ -21,6 +21,12 @@
   --faint: #55708f;
 
   --green: #38f06b;
+  /* Finished, not live. The bright green means act now — Go, and a call ready
+     to send — so an archive full of it competes with the one thing to press.
+     Measured rather than picked: 5.98:1 on the navy ground, about half the
+     contrast of --green and still well clear of the 4.5:1 a 10px label needs.
+     --green-dim is 3.58:1, which is fine for a rule and not for text. */
+  --green-deep: #1faa52;
   --green-dim: #1a7f3d;
   --amber: #ffc44d;
   --red: #ff6b6b;
@@ -249,6 +255,10 @@ button:disabled { cursor: not-allowed; color: var(--faint); border-color: var(--
 }
 
 .row-head[aria-expanded="true"] .row-mark { color: var(--green); }
+
+/* A completed call is done. Scoped to the archive, so a PREPARED row's READY
+   keeps the live green it shares with the button that sends it. */
+#past .row-state.ok { color: var(--green-deep); }
 .row-name { flex: 1; min-width: 0; font-size: 13px; word-break: break-word; }
 .row-state { flex: none; font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; }
 
