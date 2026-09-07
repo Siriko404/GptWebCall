@@ -190,6 +190,10 @@ def write_manifests(extension_id: str) -> list[Path]:
 
     written = []
     rendered = render_manifest(extension_id)
+    # The checkout keeps its own copy of the rendered manifest, exactly as
+    # install.ps1 writes one: setup.py reads it back with pinned_origin_id()
+    # to decide whether a repin is needed.
+    MANIFEST_PATH.write_text(rendered, encoding="utf-8")
     for config in target_dirs():
         host_dir = config / "NativeMessagingHosts"
         host_dir.mkdir(parents=True, exist_ok=True)

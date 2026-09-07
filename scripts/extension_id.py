@@ -19,13 +19,12 @@ Three sources, most authoritative first:
    bytes, each hex digit mapped onto a..p. Verified against a real installed
    extension, and it is what lets the host be registered first.
 
-Windows and Linux, like the rest of the installer. UTF-16LE is how Chrome
-encodes a path on both platforms.
+Windows and Linux, like the rest of the installer. Chrome encodes the path
+UTF-16LE on Windows and UTF-8 on Linux.
 
-On Linux the derivation is unchanged — UTF-16LE is how Chrome encodes a path
-there too — and the profile data lives under ~/.config/<browser>/ instead of
-%LOCALAPPDATA%\\Google\\Chrome\\User Data. The first browser directory that
-exists wins, overridable with GPTWEBCALL_BROWSER_DATA.
+On Linux the profile data lives under ~/.config/<browser>/ instead of
+%LOCALAPPDATA%\\Google\\Chrome\\User Data. Every browser directory that
+exists is searched, overridable with GPTWEBCALL_BROWSER_DATA.
 """
 
 from __future__ import annotations
@@ -54,7 +53,14 @@ def derive_extension_id(directory: Path) -> str:
     # Linux, or the reverse — would rewrite it into a local path and hash
     # something Chrome would never see.
     absolute = str(path if path.is_absolute() else path.resolve())
-    digest = hashlib.sha256(absolute.encode("utf-16-le")).hexdigest()[:32]
+    # Chrome hashes the path as UTF-16LE on Windows and UTF-8 on Linux.
+    # Verified live on 2026-09-07: Chromium 151 on Arch Linux loaded
+    # /home/sina/Work/GptWebCall/extension with the id the UTF-8 hash gives,
+    # and only the install-time repin (setup.py comparing against Chrome's own
+    # record) is what kept the earlier UTF-16LE assumption from pinning a dead
+    # origin.
+    encoding = "utf-16-le" if os.name == "nt" else "utf-8"
+    digest = hashlib.sha256(absolute.encode(encoding)).hexdigest()[:32]
     return "".join(ID_PATTERN[int(char, 16)] for char in digest)
 
 

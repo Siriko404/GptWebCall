@@ -49,15 +49,16 @@ class ExtensionIdTests(unittest.TestCase):
 
     @unittest.skipUnless(os.name == "posix", "the fixture is a POSIX path")
     def test_the_id_is_derived_the_way_chrome_derives_it_on_posix(self):
-        """Chrome encodes the absolute path UTF-16LE on Linux too, so a POSIX
-        path derives through the identical hash. The fixture is a neutral POSIX
-        path pinned the same way the Windows one is: a quiet change to the
-        encoding, the slice, or the alphabet goes red here. The live guarantee
-        is setup.py comparing the pinned ID against the browser's own record
-        and repinning when they disagree."""
+        """On Linux, Chrome hashes the absolute path encoded UTF-8 — not the
+        UTF-16LE Windows uses. Verified live on 2026-09-07 against Chromium
+        151 on Arch Linux: the extension loaded from
+        /home/sina/Work/GptWebCall/extension carried exactly the id this
+        derivation gives, which is the live pair the fixture below pins. The
+        install-time repin remains the live guarantee; this fixture keeps a
+        quiet change to the encoding, the slice, or the alphabet red here."""
         self.assertEqual(
             derive_extension_id(Path("/home/operator/GptWebCall/extension")),
-            "jbgcejjbnmlolognikfjooabbebleibm",
+            "pclfppijpiadnaomadealohejgabdeil",
         )
 
     def test_every_derived_id_is_thirty_two_characters_of_a_to_p(self):
