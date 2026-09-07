@@ -22,8 +22,8 @@ skills — and the skills are useless without the host. See the top-level
 
 To register only the skills, from the repository root:
 
-```powershell
-python scripts/install_skill.py
+```sh
+python3 scripts/install_skill.py    # `python scripts/install_skill.py` on Windows
 ```
 
 **Then restart Claude Code.** Commands register at startup; they do not appear
@@ -45,14 +45,14 @@ both keys are already correct. `--dry-run` shows the change without making it.
 restart again:
 
 ```text
-/plugin marketplace add <path-to-this-repo>\skill\webcall
+/plugin marketplace add <path-to-this-repo>/skill/webcall
 /plugin install webcall@webcall-local
 ```
 
 To try it for one session without registering anything:
 
-```powershell
-claude --plugin-dir "<path-to-this-repo>\skill\webcall"
+```sh
+claude --plugin-dir "<path-to-this-repo>/skill/webcall"
 ```
 
 ## Codex and other hosts

@@ -4,7 +4,15 @@ Hand one bounded task from a coding-agent session to ChatGPT Web, and get back f
 
 > **Installing this?** Give Claude Code this repository's link and say *"install this"*. It runs everything below.
 >
+> ```sh
+> # Linux
+> git clone https://github.com/Siriko404/GptWebCall.git "$HOME/Work/GptWebCall"
+> cd "$HOME/Work/GptWebCall"
+> python3 scripts/setup.py
+> ```
+>
 > ```powershell
+> # Windows
 > git clone https://github.com/Siriko404/GptWebCall.git "$HOME\GptWebCall"
 > cd "$HOME\GptWebCall"
 > python scripts/setup.py
@@ -36,17 +44,17 @@ Listed first because it is the point.
 
 | | |
 |---|---|
-| Windows | the installer registers a Chrome native host under `HKCU` and the extension asserts Windows attachment paths |
-| Google Chrome 125+ | `minimum_chrome_version` in the extension manifest |
+| Windows or Linux | on Windows the installer registers a Chrome native host under `HKCU`; on Linux it writes the host manifest into the browser's `NativeMessagingHosts` directory. The extension asserts absolute attachment paths on both |
+| Google Chrome / Chromium 125+ | `minimum_chrome_version` in the extension manifest |
 | Python 3.10+ on PATH | the companion. Standard library only — nothing to `pip install` |
 | Go 1.24+ | builds a 53-line launcher that starts the companion. Not a runtime dependency |
-| PowerShell | install and uninstall scripts |
+| PowerShell (Windows), a clipboard tool (Linux) | install and uninstall on Windows use PowerShell; on Linux the clipboard step uses `wl-copy`, `xclip`, or `xsel` |
 
 `python scripts/setup.py` checks all of these and names the missing one before it writes anything.
 
 Node is needed only to run the extension's tests. The extension has no dependencies and no build step.
 
-macOS and Linux are not supported. Some Python is portable, but the installer, the registry key, and the attachment path checks are not.
+macOS is not supported.
 
 ## Install
 
@@ -54,13 +62,21 @@ macOS and Linux are not supported. Some Python is portable, but the installer, t
 
 **1. Clone and run one command.** Clone somewhere permanent — the generated host manifest stores absolute paths, so moving the repository afterwards means installing again.
 
+```sh
+# Linux
+git clone https://github.com/Siriko404/GptWebCall.git "$HOME/Work/GptWebCall"
+cd "$HOME/Work/GptWebCall"
+python3 scripts/setup.py
+```
+
 ```powershell
+# Windows
 git clone https://github.com/Siriko404/GptWebCall.git "$HOME\GptWebCall"
 cd "$HOME\GptWebCall"
 python scripts/setup.py
 ```
 
-It checks every prerequisite before touching anything and names the missing one; builds the Go launcher; works out the extension's ID; registers the native-messaging host under `HKCU` and re-reads what it wrote; registers the `webcall` skills with Claude Code. `--dry-run` prints the plan and changes nothing.
+It checks every prerequisite before touching anything and names the missing one; builds the Go launcher; works out the extension's ID; registers the native-messaging host — under `HKCU` on Windows, into the browser's `NativeMessagingHosts` directory on Linux — and re-reads what it wrote; registers the `webcall` skills with Claude Code. `--dry-run` prints the plan and changes nothing.
 
 **2. It hands you the one click nothing can automate.** Chrome removed `--load-extension` from stable and a profile's preferences are signed against being written by hand, so the folder must be chosen in the picker. The installer makes that as small as it goes: it opens `chrome://extensions`, puts the extension's path on your clipboard, and waits.
 
@@ -144,17 +160,25 @@ The manual path is permanent, not a fallback that rots. Upload the one archive a
 
 ## Known limits
 
-- Windows and Chrome only.
-- The companion looks for downloads in `%USERPROFILE%\Downloads`. The installer checks this against Chrome's own setting and tells you if they differ; set `GPTWEBCALL_DOWNLOADS_DIR` to fix it, or pass `--downloads-dir` when validating.
+- Windows and Linux only; no macOS.
+- The companion looks for downloads in `~/Downloads` (`%USERPROFILE%\Downloads` on Windows). The installer checks this against the browser's own setting and tells you if they differ; set `GPTWEBCALL_DOWNLOADS_DIR` to fix it, or pass `--downloads-dir` when validating.
 - `tests/e2e/` still encodes an older request contract and is not yet a release gate. The unit suites are current.
 
 ## Uninstall
 
+```sh
+# Linux: remove the manifest the installer wrote into each browser's
+# NativeMessagingHosts directory, plus the generated one in the checkout.
+rm ~/.config/chromium/NativeMessagingHosts/com.sina.gptwebcall.json
+rm native-host/com.sina.gptwebcall.json
+```
+
 ```powershell
+# Windows
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\uninstall.ps1
 ```
 
-Removes the registry entry and the generated host manifest, and nothing else. Your calls, responses, and validation evidence stay. Remove the extension separately in `chrome://extensions`.
+Removes the registration (the registry entry on Windows, the browser manifest on Linux) and the generated host manifest, and nothing else. Your calls, responses, and validation evidence stay. Remove the extension separately in `chrome://extensions`.
 
 ## License
 

@@ -13,8 +13,8 @@ improvise this; run the script, which refuses when it must.
 
 ## 1. Run it
 
-```powershell
-python <root>\scripts\update.py
+```sh
+python3 <root>/scripts/update.py
 ```
 
 It prints one JSON object and exits `0` on success, `2` on a refusal. It
@@ -43,8 +43,8 @@ run step 3.
 
 ## 3. Re-register
 
-```powershell
-python <root>\scripts\setup.py
+```sh
+python3 <root>/scripts/setup.py
 ```
 
 Safe to run again; it undoes nothing already installed. It re-registers the

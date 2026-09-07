@@ -59,15 +59,35 @@ test("rejects a chooser without a backend node", () => {
 });
 
 
-test("rejects empty or non-absolute Windows request paths", () => {
+test("rejects empty or non-absolute request paths", () => {
   assert.throws(
     () => buildFileAssignment({ ...handoff, requestPaths: [] }, { tabId: 42 }, { backendNodeId: 1 }),
     /request paths/,
   );
   assert.throws(
     () => buildFileAssignment({ ...handoff, requestPaths: ["relative.txt"] }, { tabId: 42 }, { backendNodeId: 1 }),
-    /absolute Windows/,
+    /absolute path/,
   );
+});
+
+
+test("accepts POSIX absolute request paths", () => {
+  const posixHandoff = {
+    armed: true,
+    tabId: 42,
+    requestPaths: [
+      "/home/sina/calls/request/PROMPT_2026-07-14_151500.txt",
+      "/home/sina/calls/request/WEB_REVIEW_REQUEST.json",
+    ],
+  };
+
+  const result = buildFileAssignment(
+    posixHandoff,
+    { tabId: 42 },
+    { backendNodeId: 87 },
+  );
+
+  assert.deepEqual(result.params.files, posixHandoff.requestPaths);
 });
 
 

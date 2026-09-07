@@ -7,11 +7,11 @@ import (
 )
 
 func TestBuildCommandUsesRepositoryRootAndForwardsChromeArguments(t *testing.T) {
-	root := filepath.Join("C:", "Projects", "GptWebCall")
-	executable := filepath.Join(root, "bin", "gptwebcall-host.exe")
+	root := filepath.Join("somewhere", "GptWebCall")
+	executable := filepath.Join(root, "bin", "gptwebcall-host")
 	chromeArguments := []string{"chrome-extension://abcdefghijklmnop/", "--parent-window=10"}
 
-	directory, arguments, err := buildCommand(executable, "python.exe", chromeArguments)
+	directory, arguments, err := buildCommand(executable, "python3", chromeArguments)
 	if err != nil {
 		t.Fatal(err)
 	}

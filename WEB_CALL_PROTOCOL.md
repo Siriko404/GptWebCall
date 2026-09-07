@@ -254,18 +254,19 @@ Rules that do not relax: one exchange per responder at a time, no filename colli
 
 ## Status check and command location
 
-Commands are run from the system root, the directory holding `gptwebcall.cmd`:
+Commands are run from the system root, the directory holding the wrapper —
+`gptwebcall.cmd` on Windows, `gptwebcall` on Linux:
 
-```powershell
+```sh
 cd <system root>
-.\gptwebcall.cmd active
-.\gptwebcall.cmd list
+./gptwebcall active      # Windows: .\gptwebcall.cmd active
+./gptwebcall list
 ```
 
 From another directory, invoke the wrapper by absolute path:
 
-```powershell
-& '<system root>\gptwebcall.cmd' active
+```sh
+'<system root>/gptwebcall' active
 ```
 
 Every CLI command emits one JSON object. `ok: true` contains `result`; `ok: false` contains `error` and exits nonzero.
@@ -369,10 +370,10 @@ Store this temporary spec anywhere safe. Operational scratch under `state\` is i
 
 Prepare and inspect:
 
-```powershell
-.\gptwebcall.cmd prepare --spec C:\absolute\path\prepare_spec.json
-.\gptwebcall.cmd list
-.\gptwebcall.cmd show --exchange YYYY-MM-DD_HHMMSS_short_subject
+```sh
+./gptwebcall prepare --spec /absolute/path/prepare_spec.json
+./gptwebcall list
+./gptwebcall show --exchange YYYY-MM-DD_HHMMSS_short_subject
 ```
 
 Before telling the operator to click Go, verify the manifest lists exactly the intended files, the subject and request ID are correct, and `expected_main_json` is unambiguous.
@@ -503,7 +504,7 @@ When validation reports `INCOMPLETE`, the cause is usually mechanical rather tha
 
 A correction round diagnoses the exact defects and sends them back into the same conversation.
 
-1. `.\gptwebcall.cmd defects --exchange <exchange_id>` lists every defect as a structured record with `kind`, `target`, `expected`, and `observed`. It reads only; it changes nothing.
+1. `./gptwebcall defects --exchange <exchange_id>` lists every defect as a structured record with `kind`, `target`, `expected`, and `observed`. It reads only; it changes nothing.
 2. The **Open correction round** button, inside that call's own row in the side panel, calls `call.repair`. The companion writes `repair\ROUND_N_PROMPT.txt` and `repair\ROUND_N_DEFECTS.json` inside the exchange, records the round in the manifest, and re-arms monitoring with a fresh download baseline.
 3. The extension types the correction prompt into the composer of the bound tab and stops. It never presses Send. The operator reviews the prompt and sends it. If the composer cannot be found, the prompt is still written to disk and shown in the side panel with a copy control.
 4. ChatGPT returns corrected files into the same conversation. Files that already validated are left alone.
@@ -518,24 +519,26 @@ Rules:
 
 ## Command reference
 
-```powershell
-.\gptwebcall.cmd prepare --spec C:\path\spec.json
-.\gptwebcall.cmd list
-.\gptwebcall.cmd show --exchange <exchange_id>
-.\gptwebcall.cmd active
-.\gptwebcall.cmd done
-.\gptwebcall.cmd done --exchange <exchange_id>
-.\gptwebcall.cmd stop
-.\gptwebcall.cmd stop --exchange <exchange_id>
-.\gptwebcall.cmd delete --exchange <exchange_id>
-.\gptwebcall.cmd delete --exchange <exchange_id> --force
-.\gptwebcall.cmd clone --exchange <exchange_id>
-.\gptwebcall.cmd validate --exchange <exchange_id>
-.\gptwebcall.cmd defects --exchange <exchange_id>
-.\gptwebcall.cmd repair --exchange <exchange_id> --tab <tab_id>
-.\gptwebcall.cmd wait --exchange <exchange_id>
-.\gptwebcall.cmd wait --exchange <exchange_id> --after-current --timeout-seconds 900
+```sh
+./gptwebcall prepare --spec /path/spec.json
+./gptwebcall list
+./gptwebcall show --exchange <exchange_id>
+./gptwebcall active
+./gptwebcall done
+./gptwebcall done --exchange <exchange_id>
+./gptwebcall stop
+./gptwebcall stop --exchange <exchange_id>
+./gptwebcall delete --exchange <exchange_id>
+./gptwebcall delete --exchange <exchange_id> --force
+./gptwebcall clone --exchange <exchange_id>
+./gptwebcall validate --exchange <exchange_id>
+./gptwebcall defects --exchange <exchange_id>
+./gptwebcall repair --exchange <exchange_id> --tab <tab_id>
+./gptwebcall wait --exchange <exchange_id>
+./gptwebcall wait --exchange <exchange_id> --after-current --timeout-seconds 900
 ```
+
+On Windows every line is `.\gptwebcall.cmd` instead of `./gptwebcall`.
 
 - `prepare`: snapshot and hash one new call package.
 - `list`: list calls currently in `PREPARED` state.
@@ -615,9 +618,9 @@ If Chrome or the extension restarts while a call is active:
 
 - Before the operator sent the request: reopen the side panel, click the call's row, choose a destination, and click **Resume attachment**. The extension resolves that destination the same way Go does, rebinds the same exchange, and waits for the operator's real Attach click. It never sends automatically. The destination has to be chosen because the restart destroyed the record of which conversation the call was in.
 - After the operator sent the request: do not resend it blindly. Download the outputs, place them manually if monitoring was lost, then use `done` for the active exchange.
-- To abandon the interrupted call: use the side-panel Stop action or `.\gptwebcall.cmd stop`.
+- To abandon the interrupted call: use the side-panel Stop action or `./gptwebcall stop`.
 
-Always run `.\gptwebcall.cmd active` before recovery, and recover one exchange at a time by naming it with `--exchange`. Never start a second call against a tab that is already bound.
+Always run `./gptwebcall active` before recovery, and recover one exchange at a time by naming it with `--exchange`. Never start a second call against a tab that is already bound.
 
 ## Manual fallback
 
@@ -632,17 +635,17 @@ For a call that is still `PREPARED`:
 5. Copy the returned files into the exchange's `response\` directory using the exact expected names. Do not overwrite different bytes.
 6. Run:
 
-```powershell
-.\gptwebcall.cmd validate --exchange <exchange_id>
+```sh
+./gptwebcall validate --exchange <exchange_id>
 ```
 
 For a call already `ACTIVE`, place the returned files in its response directory and run:
 
-```powershell
-.\gptwebcall.cmd done
+```sh
+./gptwebcall done
 ```
 
-See `docs\MANUAL_FALLBACK.md` for the concise operator checklist.
+See `docs/MANUAL_FALLBACK.md` for the concise operator checklist.
 
 ## Failure and correction rules
 
@@ -666,16 +669,13 @@ The next session then runs `active` and `list`, reads only the relevant exchange
 
 ## Installation and health
 
-The system is installed for Chrome using an origin-pinned native-host manifest. If the side panel reports that the companion is unavailable, reload the unpacked extension first. Reinstall only when the extension ID or local installation changes:
+The system is installed for the browser using an origin-pinned native-host manifest. If the side panel reports that the companion is unavailable, reload the unpacked extension first. Reinstall only when the extension ID or local installation changes:
 
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\install.ps1 -ExtensionId <32-character-extension-ID>
+```sh
+python3 scripts/install.py --extension-id <32-character-extension-ID>   # Linux
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\install.ps1 -ExtensionId <32-character-extension-ID>   # Windows
 ```
 
-Uninstallation removes only the registry entry and generated native-host manifest:
-
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\uninstall.ps1
-```
+Uninstallation removes only the registration (the registry entry on Windows, the manifest under the browser's NativeMessagingHosts directory on Linux) and the generated native-host manifest. On Linux, delete `~/.config/chromium/NativeMessagingHosts/com.sina.gptwebcall.json` (and any other browser copy) plus `native-host/com.sina.gptwebcall.json`.
 
 It never deletes calls, responses, or validation evidence.

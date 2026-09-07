@@ -19,8 +19,13 @@ Three sources, most authoritative first:
    bytes, each hex digit mapped onto a..p. Verified against a real installed
    extension, and it is what lets the host be registered first.
 
-Windows only, like the rest of the installer. UTF-16LE is how Chrome encodes a
-path on this platform, and the registry key it pins is per-user.
+Windows and Linux, like the rest of the installer. UTF-16LE is how Chrome
+encodes a path on both platforms.
+
+On Linux the derivation is unchanged — UTF-16LE is how Chrome encodes a path
+there too — and the profile data lives under ~/.config/<browser>/ instead of
+%LOCALAPPDATA%\\Google\\Chrome\\User Data. The first browser directory that
+exists wins, overridable with GPTWEBCALL_BROWSER_DATA.
 """
 
 from __future__ import annotations
@@ -34,16 +39,53 @@ from pathlib import Path
 
 ID_PATTERN = "abcdefghijklmnop"
 
+LINUX_USER_DATA_DIRS = (
+    Path.home() / ".config" / "google-chrome",
+    Path.home() / ".config" / "chromium",
+    Path.home() / ".config" / "BraveSoftware" / "Brave-Browser",
+)
+
 
 def derive_extension_id(directory: Path) -> str:
     """The id Chrome will give an unpacked extension loaded from `directory`."""
-    absolute = str(Path(directory).resolve())
+    path = Path(directory)
+    # A path that is already absolute on the running platform is used verbatim.
+    # Resolving a foreign platform's absolute form — a Windows path read on
+    # Linux, or the reverse — would rewrite it into a local path and hash
+    # something Chrome would never see.
+    absolute = str(path if path.is_absolute() else path.resolve())
     digest = hashlib.sha256(absolute.encode("utf-16-le")).hexdigest()[:32]
     return "".join(ID_PATTERN[int(char, 16)] for char in digest)
 
 
 def chrome_user_data() -> Path:
-    return Path(os.environ.get("LOCALAPPDATA", "")) / "Google" / "Chrome" / "User Data"
+    if os.name == "nt":
+        return Path(os.environ.get("LOCALAPPDATA", "")) / "Google" / "Chrome" / "User Data"
+    override = os.environ.get("GPTWEBCALL_BROWSER_DATA")
+    if override:
+        return Path(override)
+    for directory in LINUX_USER_DATA_DIRS:
+        if directory.is_dir():
+            return directory
+    # Nothing is installed yet. chrome_user_data() is also the answer to "where
+    # will the profile appear", so return the preferred location rather than a
+    # missing path that would read as "not installed" forever.
+    return LINUX_USER_DATA_DIRS[0]
+
+
+def user_data_dirs(explicit: Path | None = None) -> list[Path]:
+    """Every browser profile root that could hold the extension.
+
+    An explicit root wins, and on Windows there is only ever one. On Linux an
+    operator may have more than one Chromium-family browser, and a leftover
+    directory from a browser that is barely used must not hide the profile the
+    extension was actually loaded into — so every root that exists is searched.
+    """
+    if explicit is not None:
+        return [explicit]
+    if os.name == "nt" or os.environ.get("GPTWEBCALL_BROWSER_DATA"):
+        return [chrome_user_data()]
+    return [directory for directory in LINUX_USER_DATA_DIRS if directory.is_dir()]
 
 
 def loaded_extension_id(directory: Path, user_data: Path | None = None) -> str | None:
@@ -55,30 +97,30 @@ def loaded_extension_id(directory: Path, user_data: Path | None = None) -> str |
     Preferences`, but older profiles carry it in `Preferences`.
     """
     target = str(Path(directory).resolve()).casefold()
-    base = Path(user_data) if user_data is not None else chrome_user_data()
-    if not base.is_dir():
-        return None
-    for profile in sorted(base.iterdir()):
-        if not profile.is_dir():
+    for base in user_data_dirs(user_data):
+        if not base.is_dir():
             continue
-        for name in ("Secure Preferences", "Preferences"):
-            path = profile / name
-            if not path.is_file():
+        for profile in sorted(base.iterdir()):
+            if not profile.is_dir():
                 continue
-            try:
-                data = json.loads(path.read_text(encoding="utf-8"))
-            except (OSError, ValueError):
-                continue
-            settings = data.get("extensions", {})
-            settings = settings.get("settings", {}) if isinstance(settings, dict) else {}
-            if not isinstance(settings, dict):
-                continue
-            for extension_id, value in settings.items():
-                if not isinstance(value, dict):
+            for name in ("Secure Preferences", "Preferences"):
+                path = profile / name
+                if not path.is_file():
                     continue
-                where = value.get("path")
-                if isinstance(where, str) and where.casefold() == target:
-                    return str(extension_id)
+                try:
+                    data = json.loads(path.read_text(encoding="utf-8"))
+                except (OSError, ValueError):
+                    continue
+                settings = data.get("extensions", {})
+                settings = settings.get("settings", {}) if isinstance(settings, dict) else {}
+                if not isinstance(settings, dict):
+                    continue
+                for extension_id, value in settings.items():
+                    if not isinstance(value, dict):
+                        continue
+                    where = value.get("path")
+                    if isinstance(where, str) and where.casefold() == target:
+                        return str(extension_id)
     return None
 
 

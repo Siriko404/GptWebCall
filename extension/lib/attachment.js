@@ -1,4 +1,4 @@
-const WINDOWS_ABSOLUTE_PATH = /^[A-Za-z]:\\/;
+const ABSOLUTE_PATH = /^(?:[A-Za-z]:[\\/]|\/)/;
 
 
 function validateArmedHandoff(handoff, source) {
@@ -12,9 +12,9 @@ function validateArmedHandoff(handoff, source) {
     throw new Error("approved request paths are empty");
   }
   if (!handoff.requestPaths.every((path) => (
-    typeof path === "string" && WINDOWS_ABSOLUTE_PATH.test(path)
+    typeof path === "string" && ABSOLUTE_PATH.test(path)
   ))) {
-    throw new Error("every request path must be an absolute Windows path");
+    throw new Error("every request path must be an absolute path");
   }
 }
 

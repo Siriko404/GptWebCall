@@ -42,9 +42,9 @@ work. That is an owner requirement, not a preference.
 
 ## 2. Prepare and inspect
 
-```powershell
-& '<root>\gptwebcall.cmd' prepare --spec <fresh-spec>
-& '<root>\gptwebcall.cmd' show --exchange <id>
+```sh
+<root>/gptwebcall prepare --spec <fresh-spec>   # Windows: & '<root>\gptwebcall.cmd' prepare --spec <fresh-spec>
+<root>/gptwebcall show --exchange <id>
 ```
 
 Before any browser action confirm: state `PREPARED`, request ID matches, the

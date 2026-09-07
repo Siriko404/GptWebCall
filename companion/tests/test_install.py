@@ -8,6 +8,7 @@ registry key is not testable here; what we hand Chrome is.
 from __future__ import annotations
 
 import json
+import os
 import sys
 import tempfile
 import unittest
@@ -24,17 +25,18 @@ from extension_id import (  # noqa: E402
 
 
 class ExtensionIdTests(unittest.TestCase):
-    def test_the_id_is_derived_the_way_chrome_derives_it(self):
+    @unittest.skipUnless(os.name == "nt", "the verified fixture is a Windows path")
+    def test_the_id_is_derived_the_way_chrome_derives_it_on_windows(self):
         """Chrome hashes the absolute path encoded UTF-16LE, keeps sixteen
         bytes, and maps each hex digit onto a..p.
 
         The algorithm was verified against a real pair on 2026-08-14 — a loaded
         unpacked extension's directory and the ID Chrome recorded for it — and
-        this fixture pins the implementation against that verified behaviour
-        under a neutral path, so a quiet change to the encoding, the slice, or
-        the alphabet goes red here. The live guarantee does not rest on this
-        test: setup.py compares the pinned ID against Chrome's own record on
-        every install and repins when they disagree.
+        this fixture pins the implementation against that verified behaviour,
+        so a quiet change to the encoding, the slice, or the alphabet goes red
+        here. The live guarantee does not rest on this test: setup.py compares
+        the pinned ID against Chrome's own record on every install and repins
+        when they disagree.
 
         If the derivation ever breaks anyway, the symptom is a host pinned to
         an origin Chrome does not use, and a side panel that says the companion
@@ -43,6 +45,19 @@ class ExtensionIdTests(unittest.TestCase):
         self.assertEqual(
             derive_extension_id(Path(r"C:\GptWebCall\extension")),
             "momigejapnppdkohggnofjapbhnfcalh",
+        )
+
+    @unittest.skipUnless(os.name == "posix", "the fixture is a POSIX path")
+    def test_the_id_is_derived_the_way_chrome_derives_it_on_posix(self):
+        """Chrome encodes the absolute path UTF-16LE on Linux too, so a POSIX
+        path derives through the identical hash. The fixture is a neutral POSIX
+        path pinned the same way the Windows one is: a quiet change to the
+        encoding, the slice, or the alphabet goes red here. The live guarantee
+        is setup.py comparing the pinned ID against the browser's own record
+        and repinning when they disagree."""
+        self.assertEqual(
+            derive_extension_id(Path("/home/operator/GptWebCall/extension")),
+            "jbgcejjbnmlolognikfjooabbebleibm",
         )
 
     def test_every_derived_id_is_thirty_two_characters_of_a_to_p(self):
@@ -172,6 +187,7 @@ class InstallDocumentationTests(unittest.TestCase):
         setup = (ROOT / "scripts" / "setup.py").read_text(encoding="utf-8")
 
         self.assertIn("install.ps1", setup)
+        self.assertIn("install.py", setup)
         self.assertIn("install_skill.py", setup)
         # The extension step is walked through and then verified, not left as an
         # instruction the installer hopes was followed.
@@ -179,6 +195,15 @@ class InstallDocumentationTests(unittest.TestCase):
         self.assertIn("wait_for_extension", setup)
         self.assertIn("confirm_pinned_id", setup)
         self.assertIn("Restart Claude Code", setup)
+
+    def test_the_linux_installer_registers_without_a_registry(self):
+        """On Linux there is no registry indirection: the rendered manifest is
+        written directly into each browser's NativeMessagingHosts directory."""
+        installer = (ROOT / "scripts" / "install.py").read_text(encoding="utf-8")
+
+        self.assertIn("NativeMessagingHosts", installer)
+        self.assertIn("allowed_origins", installer)
+        self.assertIn("GPTWEBCALL_DOWNLOADS_DIR", installer)
 
     def test_the_readme_opens_on_the_link_and_the_one_command(self):
         """The entry point is a repository link handed to Claude, so the clone

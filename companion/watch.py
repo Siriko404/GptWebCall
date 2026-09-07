@@ -23,6 +23,7 @@ the panel after a restart and a waiting agent can see it.
 
 from __future__ import annotations
 
+import re
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -97,7 +98,11 @@ def record_download_failure(root: Path, failure: dict[str, Any]) -> dict[str, An
         # one more field to trust from the side that just failed.
         "at": datetime.now(timezone.utc).isoformat(),
         "download_id": download_id,
-        "filename": Path(filename).name if filename else None,
+        # The filename arrives from the browser's download record, whose path
+        # form follows the platform the browser runs on. Strip either kind of
+        # separator: on POSIX, Path.name leaves `C:\\...\\name` whole and
+        # attribution by expected filename would never match.
+        "filename": re.split(r"[\\/]", filename)[-1] if filename else None,
         "message": message.strip()[:_MESSAGE_LIMIT],
     }
 

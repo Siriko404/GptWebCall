@@ -191,15 +191,17 @@ class ProtocolTests(unittest.TestCase):
         ):
             self.assertIn(heading, protocol)
         for command in (
-            ".\\gptwebcall.cmd prepare --spec",
-            ".\\gptwebcall.cmd list",
-            ".\\gptwebcall.cmd show --exchange",
-            ".\\gptwebcall.cmd active",
-            ".\\gptwebcall.cmd done",
-            ".\\gptwebcall.cmd stop",
-            ".\\gptwebcall.cmd validate --exchange",
+            "./gptwebcall prepare --spec",
+            "./gptwebcall list",
+            "./gptwebcall show --exchange",
+            "./gptwebcall active",
+            "./gptwebcall done",
+            "./gptwebcall stop",
+            "./gptwebcall validate --exchange",
         ):
             self.assertIn(command, protocol)
+        # The Windows wrapper form stays documented alongside the POSIX one.
+        self.assertIn("gptwebcall.cmd", protocol)
         for contract_term in (
             '"subject"',
             '"request_id"',

@@ -14,22 +14,25 @@ Read [OPERATING_CORE](../../references/OPERATING_CORE.md) first. Read
 1. **Look for an existing installation before anything else.** Resolve the root
    the way the core describes. If one verifies, do not clone a second copy —
    recheck and repair that one.
-2. **Confirm the host is supported.** Windows, Chrome 125+, Python 3.10+,
-   Go 1.24+, PowerShell. macOS and Linux are not supported. Node is needed only
-   to run the extension's tests. `[README.md "Requirements"]`
+2. **Confirm the host is supported.** Windows or Linux, Chrome/Chromium 125+,
+   Python 3.10+, Go 1.24+ (build-time only). PowerShell on Windows; a clipboard
+   tool (`wl-copy`, `xclip`, or `xsel`) on Linux. macOS is not supported. Node
+   is needed only to run the extension's tests. `[README.md "Requirements"]`
 3. **If there is no checkout, clone to somewhere permanent** without asking. Use
-   a target the user names, otherwise `$HOME\GptWebCall` if free. Never a
-   temporary directory: the generated host manifest stores absolute paths, and
-   moving the repository means installing again. `[README.md "Install"]`
+   a target the user names, otherwise `$HOME\GptWebCall` (Windows) or
+   `~/Work/GptWebCall` (Linux) if free. Never a temporary directory: the
+   generated host manifest stores absolute paths, and moving the repository
+   means installing again. `[README.md "Install"]`
 
-   ```powershell
-   git clone https://github.com/Siriko404/GptWebCall.git "$HOME\GptWebCall"
+   ```sh
+   git clone https://github.com/Siriko404/GptWebCall.git "$HOME/Work/GptWebCall"   # Linux
+   git clone https://github.com/Siriko404/GptWebCall.git "$HOME\GptWebCall"        # Windows
    ```
 4. **Run the tests before writing any system state.**
 
-   ```powershell
+   ```sh
    go test ./... -race -count=1
-   python -m unittest discover -s companion/tests
+   python3 -m unittest discover -s companion/tests   # `python` on Windows
    npm --prefix extension test
    ```
 
@@ -38,8 +41,8 @@ Read [OPERATING_CORE](../../references/OPERATING_CORE.md) first. Read
 5. **Install everything with one command.** Let it run; it is interactive by
    design and waits for the operator's one click.
 
-   ```powershell
-   python scripts/setup.py
+   ```sh
+   python3 scripts/setup.py    # `python scripts/setup.py` on Windows
    ```
 
    It registers the native-messaging host and the skills, then opens
@@ -86,7 +89,7 @@ Read [OPERATING_CORE](../../references/OPERATING_CORE.md) first. Read
 
 ## Refuse
 
-- Refuse to report success on macOS or Linux, with a missing runtime, with a
+- Refuse to report success on macOS, with a missing runtime, with a
   failing suite that could run, with a pinned extension ID that Chrome
   contradicts, with a failed installer postflight, with native health still
   unavailable after a reload, or with a failed smoke test.

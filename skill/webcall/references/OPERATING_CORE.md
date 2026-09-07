@@ -25,35 +25,40 @@ needs before its first action.
 
 ## 2. Find the installed root before any operational command
 
-Stop at the first candidate that contains `gptwebcall.cmd`,
+Stop at the first candidate that contains the wrapper (`gptwebcall.cmd` on
+Windows, `gptwebcall` on Linux),
 `WEB_CALL_PROTOCOL.md`, `companion/`, and `extension/`:
 
 1. A root the user or the current project names.
 2. The current directory and its ancestors.
-3. The registry, on an installed Windows machine. Read
+3. The registration, on an installed machine. Windows: read
    `HKCU:\Software\Google\Chrome\NativeMessagingHosts\com.sina.gptwebcall`; its
-   default value is the path of the generated host manifest. That manifest's
-   `path` field is `<root>\bin\gptwebcall-host.exe`, so the root is its
+   default value is the path of the generated host manifest. Linux: read the
+   manifest itself, at
+   `~/.config/chromium/NativeMessagingHosts/com.sina.gptwebcall.json` (or the
+   `google-chrome` equivalent). Either way the manifest's `path` field is
+   `<root>/bin/gptwebcall-host` (`.exe` on Windows), so the root is its
    grandparent. Verify the four files above before using it.
-   `[scripts/install.ps1:36; cmd/nativehost/main.go]`
+   `[scripts/install.ps1:36; scripts/install.py; cmd/nativehost/main.go]`
 4. If nothing verifies, `prep` and `menu` refuse operational work and send the
    user to `init`.
 
 Call the CLI through the wrapper from any directory, so it supplies `--root`
 itself:
 
-```powershell
-& '<root>\gptwebcall.cmd' <command> <args>
+```sh
+'<root>/gptwebcall' <command> <args>      # Linux (on PATH as `gptwebcall` if symlinked)
+& '<root>\gptwebcall.cmd' <command> <args> # Windows
 ```
 
-The wrapper pushes to its own directory and runs
-`python -m companion.cli --root "%~dp0."`. `[gptwebcall.cmd]`
+The wrapper changes to its own directory and runs
+`python -m companion.cli --root <root>`. `[gptwebcall; gptwebcall.cmd]`
 
 ## 3. Check state before doing anything
 
-```powershell
-& '<root>\gptwebcall.cmd' active
-& '<root>\gptwebcall.cmd' list
+```sh
+<root>/gptwebcall active
+<root>/gptwebcall list
 ```
 
 Add `show --exchange <id>` when one prepared exchange matters. Every command
@@ -126,8 +131,8 @@ made is a hypothesis to test, not a premise to confirm.
 Nothing can push into your session. `wait` is the one way an event that happens
 later reaches you: it blocks, and its **exit is the notification**.
 
-```powershell
-& '<root>\gptwebcall.cmd' wait --exchange <id>
+```sh
+<root>/gptwebcall wait --exchange <id>
 ```
 
 Run it in the background after handing a prepared call to the operator, and

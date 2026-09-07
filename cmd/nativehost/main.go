@@ -24,7 +24,7 @@ func main() {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
-	python, err := exec.LookPath("python.exe")
+	python, err := exec.LookPath("python3")
 	if err != nil {
 		python, err = exec.LookPath("python")
 	}

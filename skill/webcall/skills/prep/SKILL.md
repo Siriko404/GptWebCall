@@ -98,9 +98,9 @@ inherited from whatever the last call used.
    inventory.
 9. **Prepare, then inspect.**
 
-   ```powershell
-   & '<root>\gptwebcall.cmd' prepare --spec <spec>
-   & '<root>\gptwebcall.cmd' show --exchange <id>
+   ```sh
+   <root>/gptwebcall prepare --spec <spec>   # Windows: & '<root>\gptwebcall.cmd' prepare --spec <spec>
+   <root>/gptwebcall show --exchange <id>
    ```
 
    Confirm: state `PREPARED`, the request ID, the expected names, `attach_files`
