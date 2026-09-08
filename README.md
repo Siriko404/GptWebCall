@@ -101,7 +101,7 @@ If `/webcall:` is still missing after the restart, type these two lines and rest
 
 ## Use it
 
-Four commands, and one loop in the browser.
+Five commands, and one loop in the browser.
 
 | | |
 |---|---|
@@ -109,6 +109,7 @@ Four commands, and one loop in the browser.
 | `/webcall:menu` | everything else — status, health, finish, recover, repair, stop, delete, clone, manual fallback, watch, local responder |
 | `/webcall:init` | recheck the installation and smoke-test it |
 | `/webcall:update` | move to the latest published version, then say what only you can finish |
+| `/webcall:prodline` | run a whole production line: a Coordinator in a ChatGPT thread commissions bounded worker calls, the terminal packages, sends, and assembles them until final QA passes |
 
 Then you drive the browser half: **Go** → click ChatGPT's own **Attach files** → the launch line is typed automatically once your attachment lands → review → **Send** → download the one archive → **Done and validate**. No skill does any of that for you, by design.
 

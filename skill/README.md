@@ -1,15 +1,17 @@
 # The operating skill
 
-Three commands that let a coding-agent session run GPT Web Call without being
-handed the 561-line protocol first.
+Commands that let a coding-agent session run GPT Web Call without being
+handed the full protocol first.
 
 | command | what it does |
 |---|---|
 | `/webcall:init` | installs the system from scratch, or rechecks an existing install, and finishes with a live smoke test it invents on the spot |
 | `/webcall:prep` | prepares one bounded call: unbiased request, explicit file list, unique routing names, pre-send check |
 | `/webcall:menu` | everything else — status, health, finish, recover, repair, stop, delete, manual fallback, watch, local responder |
+| `/webcall:update` | fast-forwards this checkout to the latest published version, re-registers, and names the two steps only a human can do |
+| `/webcall:prodline` | runs a Coordinator-led production line over the system: the Coordinator in a ChatGPT thread commissions bounded worker calls; the terminal packages, sends, and assembles; parallel when safe |
 
-Nothing here fires on its own. All three carry
+Nothing here fires on its own. All five carry
 `disable-model-invocation: true`, because they install software, register a
 native-messaging host, and spend live model interactions.
 
