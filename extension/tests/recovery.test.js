@@ -35,24 +35,37 @@ test("side panel exposes an explicit user-controlled Resume action", async () =>
 
 /* One zip goes up with the prompt inside it, so the message ChatGPT receives
  * says nothing on its own and a bare archive gets a model asking what to do.
- * The companion writes the line; Go types it.
+ * The companion writes the line; it is typed once the attachment lands.
  *
- * The ordering is the part that breaks silently. insertPromptIntoComposer
- * attaches its own debugger session and detaches in `finally`, so running it
- * after armTab would throw on the second attach and strip the file-chooser
- * interception off a tab that was waiting for it.
+ * The ordering is the part that breaks silently, in both directions. Go must
+ * NOT type the line: text sitting in the composer before the archive is
+ * attached can be sent ahead of it. And completeAttachment must not type
+ * until its own debugger session is detached — insertPromptIntoComposer
+ * attaches its own session, and a second attach on an armed tab throws and
+ * strips the file-chooser interception off a tab waiting for it.
  */
-test("Go types the launch line, and types it before arming the tab", async () => {
+test("Go holds the launch line back; the attachment triggers the typing", async () => {
   const worker = await readFile(new URL("../service_worker.js", import.meta.url), "utf8");
 
-  const body = worker.slice(
+  const goBody = worker.slice(
     worker.indexOf("async function beginGo"),
     worker.indexOf("async function typeLaunchPrompt"),
   );
-  const typed = body.indexOf("typeLaunchPrompt");
-  const armed = body.indexOf("armTab(");
-  assert.ok(typed > 0, "beginGo types the launch line");
-  assert.ok(armed > typed, "the launch line is typed before the tab is armed");
+  assert.ok(
+    goBody.indexOf("typeLaunchPrompt") === -1,
+    "beginGo must not type the launch line",
+  );
+  assert.match(goBody, /pendingLaunchPrompt/, "beginGo holds the line on the handoff");
+  assert.match(goBody, /armTab\(/, "beginGo arms the tab");
+
+  const attachBody = worker.slice(
+    worker.indexOf("async function completeAttachment"),
+    worker.indexOf("async function findFileInputNode"),
+  );
+  const detached = attachBody.indexOf("safeDetach(source.tabId)");
+  const typed = attachBody.indexOf("typeLaunchPrompt");
+  assert.ok(detached > 0, "completeAttachment detaches after setting files");
+  assert.ok(typed > detached, "the launch line is typed only after the detach");
 
   assert.match(worker, /result\.launch_prompt/);
   // Failing to type it hands the operator the text instead of losing the call.

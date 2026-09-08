@@ -184,19 +184,23 @@ async function beginGo(exchangeId, mode) {
       download_baseline: existingDownloads.map((item) => item.id),
     });
     started = true;
-    const launch = await typeLaunchPrompt(tab.id, result.launch_prompt, mode);
+    /* The launch line is NOT typed here. It is held on the handoff and typed
+     * the moment the operator's attachment lands (completeAttachment), so the
+     * composer never sits with text that could be sent ahead of the archive.
+     * A thread the operator is conducting (mode "current") is never typed
+     * into at all. */
     const handoff = {
       ...handoffFrom(
         result,
         tab.id,
         exchangeId,
-        launch.message
-          ?? (mode === "current"
-            ? "Delivering into the open conversation. Click Attach files there."
-            : "Click Attach files in ChatGPT."),
+        mode === "current"
+          ? "Delivering into the open conversation. Click Attach files there."
+          : "Click Attach files in ChatGPT. The instruction is typed automatically once the attachment lands.",
       ),
       launchPrompt: result.launch_prompt ?? null,
-      launchInserted: launch.inserted,
+      launchInserted: null,
+      pendingLaunchPrompt: mode === "current" ? null : result.launch_prompt ?? null,
     };
     await writeHandoff(handoff);
     await armTab(tab.id);
@@ -216,6 +220,10 @@ async function beginGo(exchangeId, mode) {
  * receives an attachment and nothing said about it — which gets a model asking
  * what to do rather than doing it. The companion writes one line; this types it
  * and stops. The operator still reviews it and clicks Send.
+ *
+ * Called only AFTER the operator's attachment has landed (completeAttachment):
+ * the composer then holds the archive and the instruction together, and there
+ * is no window in which a stray Enter sends a bare prompt.
  *
  * Only for a fresh conversation. A thread the operator is already working in
  * has the context that makes the archive make sense, and typing a line into it
@@ -237,13 +245,13 @@ async function typeLaunchPrompt(tabId, text, mode) {
     });
     return {
       inserted: true,
-      message: "Instruction typed into ChatGPT. Click Attach files, then Send.",
+      message: "Files attached, instruction typed into ChatGPT. Review, then click Send.",
     };
   } catch (error) {
     return {
       inserted: false,
-      message: "Copy the instruction below into ChatGPT, then click Attach files "
-        + `and Send. (${error.message})`,
+      message: "Copy the instruction below into ChatGPT, then click Send. "
+        + `(${error.message})`,
     };
   }
 }
@@ -269,19 +277,19 @@ async function resumeCall(exchangeId, mode) {
   }
   try {
     const result = await nativeCommand("call.resume", payload);
-    const launch = await typeLaunchPrompt(tab.id, result.launch_prompt, mode);
+    /* Same discipline as beginGo: the launch line waits for the attachment. */
     const handoff = {
       ...handoffFrom(
         result,
         tab.id,
         result.active.exchange_id,
-        launch.message
-          ?? (mode === "current"
-            ? "Resumed into the open conversation. Click Attach files there."
-            : "Resumed. Click Attach files in ChatGPT."),
+        mode === "current"
+          ? "Resumed into the open conversation. Click Attach files there."
+          : "Resumed. Click Attach files in ChatGPT — the instruction is typed automatically once the attachment lands.",
       ),
       launchPrompt: result.launch_prompt ?? null,
-      launchInserted: launch.inserted,
+      launchInserted: null,
+      pendingLaunchPrompt: mode === "current" ? null : result.launch_prompt ?? null,
     };
     await writeHandoff(handoff);
     await armTab(tab.id);
@@ -347,12 +355,28 @@ async function completeAttachment(source, params) {
     { enabled: false },
   );
   await safeDetach(source.tabId);
-  const updated = {
+
+  /* The attachment has landed and the file-chooser session is detached, so
+   * NOW is when the held launch line gets typed: the composer holds the
+   * archive and the instruction together, and insertPromptIntoComposer can
+   * attach its own debugger session without colliding with the armed one. */
+  let updated = {
     ...handoff,
     armed: false,
     status: "ATTACHED",
     message: `${handoff.attachmentNames.length} files attached. Review them, then click Send.`,
   };
+  if (typeof handoff.pendingLaunchPrompt === "string" && handoff.pendingLaunchPrompt.trim()) {
+    const launch = await typeLaunchPrompt(source.tabId, handoff.pendingLaunchPrompt, "new");
+    updated = {
+      ...updated,
+      launchInserted: launch.inserted,
+      pendingLaunchPrompt: null,
+      message: launch.inserted
+        ? "Files attached, instruction typed into ChatGPT. Review, then click Send."
+        : launch.message,
+    };
+  }
   await writeHandoff(updated);
   await broadcastStatus(updated);
 }
