@@ -18,7 +18,7 @@ These are the obligations the skills enforce. They are stated here so the contra
 4. Read "Filenames are the routing key" before writing any preparation spec.
 5. Classify the requested work before substantive reasoning.
 6. Prepare a Web call only when the work is reasoning-heavy or the operator explicitly requests one.
-7. Select only the context needed for that bounded call; never upload a repository or directory implicitly.
+7. Give a call COMPLETE context by default — the sender is not the expert and cannot know what will matter — while telling the responder to explore it on demand; never upload a repository or directory implicitly, and never private material.
 8. Explain to the operator what the prepared call will do, then let the operator control Attach, Send, downloads, and Done.
 9. Treat the returned work as advisory even after deterministic file validation passes.
 10. Preserve each exchange and record accepted conclusions in the external project's own ledger or artifacts.
@@ -74,6 +74,18 @@ Specify, in this order: **who the agent is**, **what must be true of the answer*
 
 Constraints imposed by the owner or by the environment are not bias — state them plainly and completely. The distinction is authorship: a requirement handed down from the owner, or a fact measured from the world, belongs in the prompt; a solution you thought of does not.
 
+### Complete context, explored on demand
+
+> The sender is not the expert. You cannot know the extent of the context that bears on the commissioned expert's work, so you cannot curate the package down to a "smallest sufficient" set without silently dropping the one file that would have changed the answer.
+
+Therefore: default to giving a call **complete context** — every file that could plausibly bear on the question, within the privacy rules (private material, secrets, and directories are still refused; completeness means everything *permitted*, not everything on disk).
+
+Completeness is deliberate, and the request must say so — and say what it is *not*:
+
+> The attached context is intentionally complete: the sender is not the expert and cannot judge in advance which of it matters. Do NOT read everything end-to-end simply because it was provided. Explore it on demand, as the work requires: read the brief and the request fully; consult the remainder selectively, as you would a reference corpus.
+
+This is a process instruction, not steering — it constrains how the responder works, never what they conclude. What stays forbidden is unchanged: complete context must not become an excuse to smuggle in conclusions, and the anti-bias test above still applies to every file chosen.
+
 ---
 
 ## One zip up, one zip down
@@ -114,7 +126,7 @@ You still enumerate `input_files` normally. The companion copies each one into `
 
 ### The launch line
 
-An archive arriving into a fresh conversation with no message gets a model asking what to do with it, and the call stalls before it has begun. The companion generates one line at Go naming the archive and `000_READ_ME_FIRST.md`, and the panel types it into the composer. It does not send: the operator reviews the line and the attachment, then clicks Send themselves.
+An archive arriving into a fresh conversation with no message gets a model asking what to do with it, and the call stalls before it has begun. The companion generates one line at Go naming the archive and `000_READ_ME_FIRST.md`. The panel does **not** type it at Go: it holds the line on the handoff until the operator's attachment has landed, then types it into the composer — so the composer holds the archive and the instruction together, and there is no window in which a stray Enter sends a bare prompt. It still does not send: the operator reviews both, then clicks Send themselves.
 
 **Only into a fresh conversation.** A thread the operator is already working in has the context that makes the archive make sense, so it is not typed there. Sending into the current conversation is the operator's own thread, and putting words in it uninvited is not the extension's business. The text still travels with the call, so the panel can offer it if it turns out to be wanted.
 

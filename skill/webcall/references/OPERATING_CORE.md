@@ -104,12 +104,14 @@ made is a hypothesis to test, not a premise to confirm.
    zip down"]`
 4. An archive sent into a **fresh** conversation with no message gets a model
    asking what to do with it. The companion writes a one-line launch prompt
-   naming the archive and `000_READ_ME_FIRST.md`; the panel types it into the
-   composer at Go and stops there. Not in conductor mode — a thread already in
-   use has the context, and it is the operator's conversation. If typing fails
-   the panel offers the text to copy. The operator still clicks Send.
+   naming the archive and `000_READ_ME_FIRST.md`; the extension holds it on
+   the handoff and types it into the composer only **after** the operator's
+   attachment has landed, so the archive and the instruction travel together.
+   Not in conductor mode — a thread already in use has the context, and it is
+   the operator's conversation. If typing fails the panel offers the text to
+   copy. The operator still clicks Send.
    `[companion/core.py launch_prompt; extension/service_worker.js
-   typeLaunchPrompt]`
+   typeLaunchPrompt, completeAttachment]`
 5. **Exactly one file comes back: the outputs ZIP.** `expected_artifacts` is
    required and is exactly one `.zip`; `expected_main_json` names the main
    response **inside** it, which the companion writes out beside the archive on

@@ -110,7 +110,7 @@ Four commands, and one loop in the browser.
 | `/webcall:init` | recheck the installation and smoke-test it |
 | `/webcall:update` | move to the latest published version, then say what only you can finish |
 
-Then you drive the browser half: **Go** → click ChatGPT's own **Attach files** → review what attached → **Send** → download the one archive → **Done and validate**. No skill does any of that for you, by design.
+Then you drive the browser half: **Go** → click ChatGPT's own **Attach files** → the launch line is typed automatically once your attachment lands → review → **Send** → download the one archive → **Done and validate**. No skill does any of that for you, by design.
 
 One `.zip` goes up, carrying the prompt as `000_READ_ME_FIRST.md`. One `.zip` comes back, carrying the response JSON and every created file. ChatGPT refuses loose `.md` uploads, and one file cannot arrive out of order with itself.
 

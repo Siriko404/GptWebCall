@@ -55,10 +55,14 @@ inherited from whatever the last call used.
    In conductor mode the test still applies in full; only the assumed starting
    knowledge moves. Ask it as: could the thread, knowing what it already knows,
    still reach a better and structurally different answer than mine?
-4. **Choose the smallest sufficient `input_files`.** Always the governing
-   `WEB_REVIEW_REQUEST.json` and `WEB_RESPONSE_SCHEMA.json`; then only the
-   regular files needed to answer. Never a directory, never credentials or
-   tokens, never anything from `calls/` or `state/`.
+4. **Give COMPLETE context, explored on demand.** The sender is not the expert
+   and cannot know what will matter, so default to including every file that
+   could plausibly bear on the question — always the governing
+   `WEB_REVIEW_REQUEST.json` and `WEB_RESPONSE_SCHEMA.json` among them. Never
+   a directory, never credentials or tokens, never anything from `calls/` or
+   `state/`. The request must tell the responder the context is deliberately
+   complete and is to be explored on demand, not read end-to-end (see
+   WEB_CALL_PROTOCOL.md, "Complete context, explored on demand").
 5. **Pick a stable `request_id` and a short pass token.** One file comes back:
    `<pass>_outputs.zip`, with `<pass>_response.json` inside it. Both names are
    reserved; only the archive is ever matched against a download. Check `active`
@@ -87,7 +91,10 @@ inherited from whatever the last call used.
    the whole package, requires it to be extracted, states that the reply is
    exactly one `.zip` with the main JSON inside it, and — when thoroughness is
    the point — requires a file-by-file inventory with byte sizes before any
-   analysis.
+   analysis. `prompt_text` and the request must also carry the
+   complete-context instruction: the package is deliberately whole, is to be
+   explored on demand, and must not be read end-to-end merely because it is
+   there.
 
    **One zip goes up and nothing else.** ChatGPT refuses loose `.md`
    attachments, so the companion packs your `prompt_text` into the archive as
