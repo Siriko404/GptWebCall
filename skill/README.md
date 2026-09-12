@@ -10,8 +10,9 @@ handed the full protocol first.
 | `/webcall:menu` | everything else — status, health, finish, recover, repair, stop, delete, manual fallback, watch, local responder |
 | `/webcall:update` | fast-forwards this checkout to the latest published version, re-registers, and names the two steps only a human can do |
 | `/webcall:prodline` | runs a Coordinator-led production line over the system: the Coordinator in a ChatGPT thread commissions bounded worker calls; the terminal packages, sends, and assembles; parallel when safe |
+| `/webcall:finprodline` | FinProdLine — a finance production operating system over the same system: one command discovers or initializes a project, then runs an audited Method/Data/Execution line with replicated adversarial audits, three-layer planning, provenance, and synchronized CSV/Excel/engine and handbook outputs |
 
-Nothing here fires on its own. All five carry
+Nothing here fires on its own. All six carry
 `disable-model-invocation: true`, because they install software, register a
 native-messaging host, and spend live model interactions.
 
@@ -77,11 +78,23 @@ skill/
   webcall/
     .claude-plugin/plugin.json       namespace: webcall
     .claude-plugin/marketplace.json  lets this directory install itself
-    commands/{init,prep,menu}.md     the three slash commands
     skills/{init,prep,menu}/SKILL.md the workflow each command follows
-    references/OPERATING_CORE.md     read once per session, by all three
+    skills/{update,prodline}/SKILL.md
+    skills/finprodline/SKILL.md      FinProdLine entrypoint (see its references/)
+    references/OPERATING_CORE.md     read once per session, by all of them
     references/SMOKE_TEST.md         read only when a smoke test is due
+    references/finprodline/          FINPRODLINE_PROTOCOL.md, STATE_PROTOCOL.md,
+                                     AUDIT_PROTOCOL.md, HANDBOOK_PROTOCOL.md, schemas/
     adapters/codex/AGENTS.md
+```
+
+FinProdLine's own deterministic tooling lives at the repository root, beside the companion:
+
+```
+scripts/fpl_state.py     append-only state surface: discover, get, append, verify, lineage
+scripts/fpl_precheck.py  package precheck — run before every `gptwebcall prepare`
+scripts/fpl_schemas.py   emits the machine schemas; --check detects drift
+tests/finprodline/       its test suite
 ```
 
 The commands are thin: each reads the operating core, then follows its skill.
