@@ -37,8 +37,8 @@ behaviour are internal. Never tell the operator to run a second FinProdLine comm
      `project.json` or the project stream.
    - No marker → initialize a new project in the current directory. Settle only the genuinely
      project-specific choices, once: goal and acceptance outcome, canon mode, audit replica count
-     `N`, handbook learner preference, any release-artifact override, and any confidentiality or
-     licensing restrictions.
+     `N`, handbook learner preference, any release-artifact override, any confidentiality or
+     licensing restrictions, and **standing upload approval** (ask once here, never per package).
 4. **Check the installed system.** Confirm the Web Call root resolves and run `active` and `list`
    **for this project only**. If the root does not verify, refuse and send the operator to
    `/webcall:init`.
@@ -82,20 +82,46 @@ executed by `N` independent replicas per chunk, and integrated by a fresh adjudi
 repairs. A gate is passed only at 100% under FINPRODLINE_PROTOCOL.md §5.4. A material finding sends
 the work to fresh repair, followed by a **fresh full audit round**, never a partial one.
 
+**A fresh full audit round is a fresh EXECUTION, not a fresh plan.** A verified plan is closed
+permanently. A repair changes the object, so the plan is re-bound to the repaired artifact
+identities — a mechanical hash update — and the work is re-audited in full against the **same**
+plan, with new replicas and a new integrator. **Failing work is redone until it satisfies the
+verified plan.** The plan itself is never revised, re-reviewed or re-planned by anyone, for any
+reason. A hole in a plan's method belongs to the plan-validation loop, which runs before the plan is
+first used. See FINPRODLINE_PROTOCOL.md §2.7 and AUDIT_PROTOCOL.md §8.
+
 Terminal never enters a fix-run loop. It executes an accepted package once and halts at the first
 anomaly with raw evidence preserved.
 
+**Every producer declares its own checks.** A worker that returns a mechanical artifact also returns,
+in the same archive, the declarative acceptance-check specification for that artifact. Terminal runs
+those checks through one generic evaluator and never authors, extends or substitutes artifact-specific
+checks. A missing specification is a packaging defect against the package that omitted it. See
+FINPRODLINE_PROTOCOL.md §2.6.
+
 ## 5. Every outbound package
 
-Build complete permitted context, run `fpl_precheck` on the spec, present the file manifest to the
-operator for explicit upload approval, record the approval, `prepare`, then arm `wait` immediately
-after handoff. Use `show`, never `validate`, as the pre-send check.
+Build complete permitted context, run `fpl_precheck` on the spec, satisfy the upload-approval rule,
+`prepare`, then arm `wait` immediately after handoff. Use `show`, never `validate`, as the pre-send
+check.
+
+Under a **standing upload approval** — which the operator normally grants, and which
+`/webcall:finprodline` should ask for once at init rather than once per package — the manifest is
+recorded, never asked as a question. Record the manifest, its per-file hashes, and the approval
+basis in the run stream, feed the manifest to `fpl_precheck --approved`, and prepare. Do not put an
+approval question to the operator for each package. Only where no standing approval exists does the
+per-package approval apply.
 
 Before the precheck passes, confirm at minimum: request ID agreement everywhere; exact output ZIP and
 main JSON names; no routing-name collision with any PREPARED or ACTIVE call; both governing JSONs
 present under their exact basenames; no `000_READ_ME_FIRST.md` in `input_files`; every declared path
 exists with a unique plain basename; nothing from Web Call `calls/` or `state/`; no credentials; and
 that everything the commission claims to contain is actually packaged.
+
+A commission whose output includes a mechanical artifact must also demand the producer's
+**acceptance-check specification** as a named deliverable, state the exact response-envelope fields
+the companion parses (see the project's envelope contract), and require that its own checks are
+declared rather than implied.
 
 ## 6. Reporting to the operator
 
@@ -117,10 +143,30 @@ Terminal can do it, they do it.
   cross-artifact reconciliation for that scope.
 - Refuse to let a producer audit its own work, a planner audit its own plan, or an integrator repair
   what it adjudicated.
+- Refuse to author, extend, weaken or substitute artifact-specific acceptance checks on a producer's
+  behalf. Terminal executes the producer's declared checks through one generic evaluator; a missing
+  or unrunnable specification is a packaging defect, not a cue to write checks yourself.
+- Refuse to execute a returned script, binary, macro or document with active content. Declared
+  checks are data, evaluated by Terminal's own generic evaluator.
+- Refuse to treat a producer's declared checks as proof of anything, or to let them narrow an
+  audit's scope. They are audited, not trusted.
 - Refuse to skip the fresh full re-audit after a repair.
+- **Refuse to reopen a verified audit plan. Ever. For any reason.** Not because the work was
+  repaired, not because a round found something, not because an integrator objects, not because
+  someone now believes the plan has a hole. A plan's validation is closed the moment it passes.
+- Refuse to commission an Audit Planner or a plan review after a plan is verified.
+- Refuse to run a coverage-delta assessor, or any other instrument whose purpose is to decide whether
+  a verified plan should be rewritten. There is no such instrument. The plan-validation loop, which
+  runs before the plan is used, is the only place a plan may change.
+- **Refuse to edit the standard to fit failing work.** When a step fails its audit, the remedy is to
+  redo the step until the verified plan is satisfied. If it genuinely cannot be, the line is
+  `BLOCKED` and the Coordinator decides what becomes of the **work** — never of the plan.
 - Refuse to accept a finding that states no evidence, no remediation and no closure test.
 - Refuse to begin handbook production for a phase that has not 100% passed.
-- Refuse to upload any project document without explicit operator approval.
+- Refuse to upload any project document without operator approval — satisfied by a standing upload
+  approval, or by a per-package approval where none exists.
+- Refuse to put a per-package upload-approval question to the operator when a standing approval is
+  in force.
 - Refuse to transmit Web Call `calls/` or `state/`, credentials, tokens, or project material under
   an active privacy lock.
 - Refuse to reconstruct project state from conversation memory.

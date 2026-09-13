@@ -52,9 +52,17 @@ The Audit Plan must:
 - define failure and materiality rules;
 - define the ledger and state checks;
 - record the replica count `N` selected by the operator;
+- assess the **producer's declared acceptance-check specification** (FINPRODLINE_PROTOCOL.md §2.6)
+  for coverage, strength and independence, and state what the audit adds beyond it;
 - prove complete coverage of the target scope — every criterion mapped, no orphan check.
 
 A plan that leaves any acceptance criterion unmapped is malformed and is returned, not executed.
+
+The producer's declared checks are an **input to** the audit plan, never a substitute for it. An
+audit that only re-runs them has audited nothing: it has confirmed that the producer's own
+understanding of its contract is self-consistent, which is exactly what the producer already
+asserted. Declared checks that are vacuous, tautological, self-fulfilling, or that map fewer than
+every acceptance criterion are a material finding against the producer.
 
 ---
 
@@ -148,14 +156,50 @@ If any material defect remains:
 1. Preserve all failed work and all audit evidence.
 2. Commission fresh repair or revision worker(s) with the exact findings and closure tests.
 3. Validate the returned repair mechanically.
-4. Start a **new independent exhaustive audit round** — new Audit Planner, new plan review, new
-   replicas, new integrator.
-5. The new round reassesses the **entire relevant scope**, not only the previously known defects.
-   A repair that fixes the named defects and breaks nothing else is still unproven until re-audited
-   in full.
-6. Repeat until 100% passed under §5.4 of the main protocol, or genuinely `BLOCKED`.
+4. **Re-bind the verified plan** to the repaired artifact identities (§8.1). This is a mechanical hash
+   update. It is not a determination and it opens nothing.
+5. **Audit the repaired work again, in full, against the same verified plan** — new replicas, a new
+   integrator, the entire relevant scope reassessed, not only the previously known defects.
+6. Repeat 2–5 until 100% passed under §5.4 of the main protocol, or genuinely `BLOCKED`.
 
-No silent repair. No producer self-audit. No reduction of scope because a round already ran.
+No silent repair. No producer self-audit. No reduction of scope because a round already ran. **No
+Audit Planner and no plan review, ever, after the plan is verified.**
+
+**The verified plan is never reopened.** It is not revised, not re-reviewed, not re-planned and not
+re-litigated — not on a repair, not on a finding, not on a later round's objection, and not because
+someone now believes the plan has a hole. If the work does not satisfy the plan, **the work is
+redone until it does.** That is the entire remedy.
+
+### 8.1 A plan is bound, not re-validated
+
+A verified plan's `review_state` does not change when it is re-bound. The plan was passed and it
+remains passed; only its **binding** — the exact basenames, sizes and sha256 it executes against — is
+replaced. Terminal performs the re-binding mechanically and records it as a `plan_binding_recorded`
+run-stream event, exactly as it records a first binding.
+
+Re-binding is a hash update. There is no assessor, no determination and no judgement in it, and
+nothing about the plan's content is examined or questioned while it happens.
+
+### 8.2 The verified plan is closed, and nothing reopens it
+
+A plan that has passed its own independent review is **closed**. The following are all denied:
+
+- a repair to the audited work;
+- a finding raised in a later round;
+- an uncovered-material objection from an integrator;
+- a hole newly noticed in the plan's own method;
+- a Coordinator's, auditor's or operator's later change of mind about the method.
+
+**A hole in the plan's method is the plan-validation loop's job, and that loop runs before the plan
+is ever used** (§3). Once it has passed the plan at 100%, the question is settled and is not asked
+again. A method that can be re-litigated after it is verified has not been verified at all — the
+validation would only be a pause before the next round of doubt, which is exactly the tower §3's
+recursion boundary exists to forbid.
+
+If the work cannot satisfy a verified plan, **the work is wrong**. Redo the work. If the work
+genuinely cannot be redone to satisfy it, the line is `BLOCKED` and the Coordinator decides what
+becomes of the work. **The plan is still not touched — not by the repairer, not by Terminal, not by
+the Coordinator, not by anyone.**
 
 ---
 
@@ -189,3 +233,19 @@ a material finding, and the gate reopens.
 - Replicas never see each other's output before the integration step.
 - Audit packages carry complete permitted context, with a completeness manifest.
 - A finding without evidence, remediation and a closure test is not a finding.
+- An audit never accepts a producer's declared checks as proof, and never lets them narrow its own
+  scope. The declared checks are audited, not trusted.
+- A verifier never authors the checks for work it did not produce. If the declared checks are
+  missing or insufficient, that is a finding against the producer and a packaging defect against the
+  package that omitted them — not a licence for the verifier to write its own.
+- **A verified plan's validation is closed permanently.** Nothing reopens it. What moves when the
+  audited work is repaired is the **binding** — a list of hashes — and that is a mechanical update
+  performed by Terminal, not a judgement about the plan.
+- **Failing work is redone until it satisfies the verified plan.** The remedy for a failing step is
+  never an edit to the standard it failed. A system that re-plans when work fails has not gained
+  assurance; it has moved the goalposts and called it quality.
+- **A hole in a plan's method belongs to the plan-validation loop, which runs before the plan is
+  used.** Discovering one later does not reopen the plan; it means the validation loop failed, and
+  the plan stays closed regardless. There is no Coverage-Delta Assessor, no DELTA determination, and
+  no plan revision after verification. If the work genuinely cannot satisfy a verified plan, the
+  line is `BLOCKED` and the Coordinator decides what becomes of the work — not of the plan.

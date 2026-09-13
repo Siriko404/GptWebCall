@@ -145,6 +145,35 @@ def main() -> int:
         if unshipped:
             problems.append("CLAIMED IN package_contents BUT NOT SHIPPED: " + ", ".join(sorted(unshipped)))
 
+    # ---- 6b. the prompt's own named deliverables must be the ones the wrapper expects
+    #
+    # Raised by TERM-FPL-006 manifestation 4. The prompt ships as 000_READ_ME_FIRST.md and is the
+    # first thing the worker reads, so a name in it is an instruction. A prompt copied forward from
+    # the previous turn and only partly find-and-replaced tells the worker to emit the PREVIOUS
+    # turn's filenames — which are still routing names owned by a completed exchange, so the
+    # download is filed against that exchange instead of reported as a mismatch.
+    prompt = spec.get("prompt_text") or ""
+    if prompt:
+        if expected_main and expected_main not in prompt:
+            problems.append(
+                f"PROMPT NEVER NAMES THE EXPECTED MAIN JSON {expected_main!r}. The prompt is what "
+                f"the worker obeys; it will name the main file something else and the delivery will "
+                f"not be fileable.")
+        for a in expected_artifacts:
+            if a not in prompt:
+                problems.append(
+                    f"PROMPT NEVER NAMES THE EXPECTED ARCHIVE {a!r}. Downloads are routed by "
+                    f"filename alone, so the archive will be attributed to whichever exchange "
+                    f"still owns the name the prompt gave.")
+        expected_names = {expected_main, *expected_artifacts}
+        stale = {m.group(0) for m in
+                 re.finditer(r"[A-Za-z0-9_][A-Za-z0-9_.\-]*_(?:response\.json|outputs\.zip)", prompt)}
+        stale -= expected_names
+        if stale:
+            problems.append(
+                "PROMPT NAMES FOREIGN DELIVERABLES (stale turn token?): " + ", ".join(sorted(stale)) +
+                ". A prompt must name exactly the archive and main JSON this call expects.")
+
     # ---- 7. project scope: nothing from Web Call calls/ or state/, nothing outside the project
     if args.project:
         proot = Path(args.project).resolve()

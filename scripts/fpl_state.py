@@ -36,8 +36,8 @@ STREAMS = {
         "directive_received", "directive_rejected_malformed", "package_precheck_result",
         "upload_approval_recorded", "exchange_prepared", "exchange_armed",
         "exchange_event_received", "delivery_validated", "semantic_acceptance_recorded",
-        "artifact_persisted", "reconciliation_result", "index_rebuilt", "supersession_linked",
-        "anomaly_recorded", "recovery_event",
+        "artifact_persisted", "reconciliation_result", "plan_binding_recorded", "index_rebuilt",
+        "supersession_linked", "anomaly_recorded", "recovery_event",
     ],
     "worker": [
         "task_started", "input_pinned", "step_performed", "finding_recorded", "output_produced",

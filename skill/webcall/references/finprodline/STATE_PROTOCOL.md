@@ -95,8 +95,14 @@ after it. `fpl_state verify-ledgers` recomputes the whole chain and reports the 
 `directive_received`, `directive_rejected_malformed`, `package_precheck_result`,
 `upload_approval_recorded`, `exchange_prepared`, `exchange_armed`, `exchange_event_received`,
 `delivery_validated`, `semantic_acceptance_recorded`, `artifact_persisted`,
-`reconciliation_result`, `index_rebuilt`, `supersession_linked`, `anomaly_recorded`,
-`recovery_event`.
+`reconciliation_result`, `plan_binding_recorded`, `index_rebuilt`, `supersession_linked`,
+`anomaly_recorded`, `recovery_event`.
+
+`plan_binding_recorded` is the mechanical act of binding a verified plan to the exact artifact
+identities it will execute against — basenames, sizes, sha256 — or of re-binding it after a repair. It
+changes nothing about the plan: the plan was passed and remains passed, and it is never reopened. It
+exists because a verified plan carries forward across repairs and only its **binding** moves, and a
+re-binding is a hash update rather than a judgement. See AUDIT_PROTOCOL.md §8.1.
 
 **Worker stream (`workers/<worker-id>.jsonl`) — one worker's scoped task.**
 `task_started`, `input_pinned`, `step_performed`, `finding_recorded`, `output_produced`,

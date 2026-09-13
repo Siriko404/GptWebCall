@@ -104,6 +104,97 @@ permitted response to cost, and audit scope is not reduced because a run is expe
 is reported as run state. See `governance/OPERATOR_RULINGS.md` R001 in the project that produced
 this protocol.
 
+### 2.6 Producer-supplied acceptance checks
+
+**The worker that produces an artifact also declares how that artifact is mechanically checked.**
+
+This is not optional and not delegable. A verifier that invents the checks for someone else's work
+is verifying its own understanding of the contract, not the producer's — and the producer is the
+only party that knows what it built and what it claims about it.
+
+Every commission whose output includes a mechanical artifact therefore requires, as part of its
+deliverable set, an **acceptance-check specification**: a declarative, machine-evaluable description
+of the checks that artifact must pass, expressed against the artifact's own bytes and the acceptance
+criteria the commission was given.
+
+Rules:
+
+- **Declarative, never executable.** The specification is data. Terminal never executes a returned
+  script, binary, macro or document with active content, merely because validation passed
+  (OPERATING_CORE §1.4). It evaluates the declaration with the project's single generic evaluator.
+  This keeps the executed logic inside code Terminal can read and review, and keeps the producer's
+  intent inspectable rather than opaque.
+
+- **Terminal executes; Terminal never authors.** Terminal runs the producer's declared checks
+  exactly once, deterministically, and records the raw result verbatim. Terminal does not write,
+  edit, extend, weaken or repair artifact-specific checks, and does not substitute its own. A missing
+  or unrunnable specification is a **packaging defect against the package that omitted it** — never
+  an invitation to author one.
+
+- **One evaluator.** A single generic evaluator is owned by Terminal and contains no
+  artifact-specific logic. It knows check *types*, not any particular artifact. If it cannot express
+  a wanted check, the check specification is malformed and goes back to be restated; the evaluator is
+  not extended per artifact.
+
+- **Declaring checks is not auditing.** The producer states the contract it believes it met. It does
+  not thereby accept its own work. Passage under §5.4 still requires an independent integrated audit
+  verdict, and the audit tests the work independently of the declared checks.
+
+- **The declaration is itself auditable.** The independent audit assesses the declared checks for
+  **coverage** (every acceptance criterion mapped), **strength** (no vacuous, tautological or
+  self-fulfilling checks) and **independence** (the audit does not merely re-run them). Insufficient
+  declared checks are a material finding against the producer, not a gap in the audit.
+
+- **Earn-Keep proof becomes observable.** A piece's `proof` field states its completion condition;
+  for any mechanical artifact that condition is realised as a declared check, so `proof` and the
+  check specification cannot drift apart.
+
+### 2.7 A verified audit plan is never reopened
+
+The lifecycle, in order, and there is nothing else:
+
+1. **Step x gets done.**
+2. **Step x needs an audit**, so an **Audit Planner** is commissioned for step x.
+3. **That audit plan may have holes.** So the plan itself enters an audit loop — independent review,
+   repair, re-review — and keeps going **until it is validated at 100%**. That loop is where every
+   hole in the plan is found and closed. It runs *before* the plan is used, and it is the only
+   chance the plan gets.
+4. **The verified plan for step x is then used to audit step x.**
+5. **Step x fails.**
+6. **The verified audit plan is NOT reopened.** Not revised. Not re-reviewed. Not re-planned. Not
+   re-litigated. It is not touched, in whole or in part, for any reason.
+7. **Step x is redone until the verified audit plan is satisfied.**
+
+That is the whole rule. The remedy for failing work is **redoing the work**, never editing the
+standard it failed.
+
+The one mechanical thing that does move is the **binding**:
+
+- The **plan** is the audit *method* — chunks, checks, evidence requirements, failure and materiality
+  rules, the integration contract. Once verified, it is closed permanently.
+- The **binding** is the set of exact artifact identities — basenames, sizes, sha256 — the plan
+  executes against.
+
+A repair changes the object, so the identity list is stale and must be refreshed. Re-binding is a
+**hash update**, performed mechanically by Terminal and recorded as a `plan_binding_recorded` event,
+exactly as a first binding is recorded. It involves no determination, no assessor, no judgement, and
+it opens nothing.
+
+Re-binding is possible because the plan declares *what* it audits by **logical identity** — basename,
+role, version-independent description — and leaves exact hashes to the binding. Plan authors should
+prefer that form. A plan that pins exact target hashes inside its own scope is permitted, but it is a
+deliberate choice with a cost: it makes the plan single-use, and re-binding it then means restating
+hashes the plan claims to own.
+
+**The full re-audit after a repair is never waived.** New replicas, a new integrator, and the entire
+relevant scope reassessed — not only the previously known defects — all against the **same verified
+plan**. What is dropped when a plan is carried forward is the re-planning ceremony, not the
+assurance, and not a single check.
+
+**If the work cannot be made to satisfy the verified plan**, the line is `BLOCKED`. The Coordinator
+decides what happens to the work. The plan is still not reopened, by anyone, including the
+Coordinator. See [AUDIT_PROTOCOL.md](AUDIT_PROTOCOL.md) §8.
+
 ---
 
 ## 3. Roles
@@ -141,9 +232,12 @@ infrastructure. It:
 - discovers, initializes and resumes project state;
 - calls the state and index tools;
 - prepares Web Call packages from Coordinator directives;
-- runs package prechecks and obtains upload approval;
+- runs package prechecks and satisfies the upload-approval rule in §8;
 - persists ledgers, worker histories, indexes, artifacts and run state;
-- runs exact deterministic commands and tests specified by accepted directives or worker artifacts;
+- runs exact deterministic commands and tests specified by accepted directives or worker artifacts —
+  including, for every mechanical artifact, the **producer's own declared acceptance checks** (§2.6)
+  through the single generic evaluator. Terminal executes those checks; it does not author,
+  extend, weaken or substitute them;
 - applies explicit non-conflicting patches mechanically, once;
 - collects, routes, hashes, extracts, assembles, reconciles and validates artifacts;
 - performs narrow semantic acceptance;
@@ -258,7 +352,8 @@ result reproducible?
 
 A plan or gate is 100% passed only when all of these hold:
 
-1. every planned check completed and passed;
+1. every planned check completed and passed, including every producer-declared acceptance check
+   under §2.6, executed by Terminal through the generic evaluator and reporting pass;
 2. every audit finding is closed;
 3. no unresolved material uncertainty remains;
 4. every required evidence or reference is traceable;
@@ -352,14 +447,27 @@ unexplained manual number passes a gate.
 
 ## 8. Upload approval and confidentiality
 
-No project document is uploaded without explicit operator approval.
+**Standing approval.** The operator may grant a standing upload approval for a project, and normally
+does. Under a standing approval every package for that project is pre-approved: Terminal does not
+present the manifest as a question and does not put a per-package decision to the operator.
 
-For every outbound package, Terminal presents a concise manifest of the project files proposed for
-upload, and the operator approves or rejects. The approval is recorded in the Terminal run stream.
+Under a standing approval Terminal still:
 
-Hard Web Call prohibitions remain hard regardless of approval: anything under Web Call `calls/` or
-`state/`, credentials, authentication material, tokens, and any material forbidden by an active
-project privacy lock are never transmitted.
+- ships only files that must be uploaded, each earning its place against the commissioning
+  directive's own `context_scope` or the wrapper's own requirements. A standing approval is not
+  licence to pad a package;
+- builds the manifest, hashes every file, and records the manifest together with the approval basis
+  it operated under in the Terminal run stream, so the evidence trail survives without the question;
+- runs `fpl_precheck`, deriving that tool's required `--approved` list from the manifest it just
+  recorded.
+
+Where no standing approval exists, the per-package rule applies: Terminal presents the manifest, and
+the operator approves or rejects. The approval is recorded in the Terminal run stream.
+
+Hard Web Call prohibitions remain hard regardless of approval, standing or specific: anything under
+Web Call `calls/` or `state/`, credentials, authentication material, tokens, and anything under
+`.finprodline/` project state are never transmitted. These are system-level prohibitions, not the
+project's to waive.
 
 If confidentiality, licensing or price-sensitivity status is unknown, treat the file as **not
 cleared**. Workers may produce a sanitized derivative. If project policy still does not settle
@@ -376,8 +484,9 @@ the operator on a research journey.
 4. Coordinator issues a directive batch.
 5. Terminal applies Earn-Keep and deterministic directive-shape checks. A malformed or ambiguous
    directive goes back for correction; Terminal does not infer intent.
-6. For every outbound package: build complete permitted context, run the package precheck, obtain
-   explicit operator upload approval, `prepare`, then arm `wait` after handoff.
+6. For every outbound package: build complete permitted context, run the package precheck, satisfy
+   the upload-approval rule in §8 (under a standing approval, record the manifest rather than asking),
+   `prepare`, then arm `wait` after handoff.
 7. Operator bridges the browser clicks.
 8. Web Call validates delivery. Terminal performs narrow semantic acceptance.
 9. Terminal immediately appends mechanical state events and persists worker task ledgers and
@@ -459,6 +568,8 @@ Project completion requires all of:
 - every required phase's Layer 2/3 plan is accepted;
 - every required phase's Method, Data and Execution gates are 100% passed;
 - all required release artifacts exist and reconcile;
+- every mechanical artifact carries its producer's declared acceptance-check specification (§2.6),
+  and every declared check has been executed and reports pass;
 - all material provenance is traceable;
 - project, run and worker ledger integrity passes;
 - the handbook covers every 100%-passed phase and satisfies its own QA contract;
@@ -482,7 +593,7 @@ Anything less is `CONTINUE`, `BLOCKED` or `STOPPED`. `GREENLIGHT` is the only co
 | `GATE_WORK` | a gate's substantive work commissioned | gate work returned and accepted |
 | `AUDIT` | audit round planned, replicas running, or integrating | 100% passed or findings returned |
 | `REPAIR` | a material finding forces fresh repair work | repair validated, re-audit started |
-| `WAITING_OPERATOR` | an upload approval, a click, or a design choice is required | operator acts |
+| `WAITING_OPERATOR` | an upload approval (absent a standing approval), a click, or a design choice is required | operator acts |
 | `WAITING_WORKERS` | one or more exchanges active | relevant call events validated |
 | `HANDBOOK` | handbook production or handbook QA for passed phases | handbook contract satisfied |
 | `FINAL_QA` | project declared complete enough to audit | defects continue, or QA passes |
