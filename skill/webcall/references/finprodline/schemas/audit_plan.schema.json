@@ -61,6 +61,8 @@
     },
     "chunks": {
       "type": "array",
+      "maxItems": 3,
+      "description": "An audit is planned in AT MOST THREE chunks (AUDIT_PROTOCOL.md 2.1). The round ceiling is 3 x N auditor calls -- nine at N=3. Three is a ceiling, not a target. The cap never reduces coverage: every acceptance criterion is still mapped and every check still executed.",
       "items": {
         "type": "object",
         "required": [

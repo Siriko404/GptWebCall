@@ -341,17 +341,27 @@ def build_view(root: Path, name: str, selectors: dict) -> dict:
         }
 
     if name == "open-items":
-        raised = {e["payload"].get("item_id"): e["payload"] for e in project
+        # The item id may live in the payload OR in the envelope's subject_id. Keying on
+        # payload["item_id"] alone silently collapsed every event to a None key, so an
+        # open_item_raised followed by an unrelated open_item_settled produced an EMPTY view while
+        # the append-only stream still showed the item open. That is exactly the index/stream
+        # contradiction STATE_PROTOCOL 4 forbids, and an independent Layer-1 auditor found it as
+        # UA3-C02-STATE-001 / UA3-C08-STATE-001 before anyone else did.
+        def _key(e: dict, field: str):
+            return e["payload"].get(field) or e.get("subject_id")
+
+        raised = {_key(e, "item_id"): e["payload"] for e in project
                   if e["event_type"] == "open_item_raised"}
-        settled = {e["payload"].get("item_id") for e in project
+        settled = {_key(e, "item_id") for e in project
                    if e["event_type"] == "open_item_settled"}
-        promoted = {e["payload"].get("finding_id"): e["payload"] for e in project
+        promoted = {_key(e, "finding_id"): e["payload"] for e in project
                     if e["event_type"] == "finding_promoted"}
-        closed_f = {e["payload"].get("finding_id") for e in project
+        closed_f = {_key(e, "finding_id") for e in project
                     if e["event_type"] == "finding_closed"}
         return {
-            "open_questions": [v for k, v in raised.items() if k not in settled],
-            "open_findings": [v for k, v in promoted.items() if k not in closed_f],
+            "open_questions": [dict(v, item_id=k) for k, v in raised.items() if k not in settled],
+            "open_findings": [dict(v, finding_id=k) for k, v in promoted.items()
+                              if k not in closed_f],
         }
 
     if name == "plan-current":
@@ -380,6 +390,10 @@ def build_view(root: Path, name: str, selectors: dict) -> dict:
         return {"nodes": sorted(k for k in arts if k), "edges": edges}
 
     if name == "calls-current":
+        # A prepared call that is later deleted must not keep presenting as current. The view used
+        # to list every exchange ever prepared, so a deleted fleet still showed up as live and a
+        # Layer-1 auditor raised it as UA1-CH01-F003 / UA1-CH08-F002.
+        TERMINAL = {"COMPLETE", "INCOMPLETE", "STOPPED", "DELETED"}
         out = {}
         for e in run:
             if e["event_type"] in ("exchange_prepared", "exchange_armed", "delivery_validated",
@@ -391,7 +405,30 @@ def build_view(root: Path, name: str, selectors: dict) -> dict:
                 out.setdefault(xid, {"exchange_id": xid, "events": []})
                 out[xid]["events"].append({"event_type": e["event_type"], "seq": e["seq"],
                                            "payload": e["payload"]})
-        return {"exchanges": list(out.values())}
+        exchanges = []
+        for xid, rec in out.items():
+            kinds = {ev["event_type"] for ev in rec["events"]}
+            state = None
+            for ev in rec["events"]:
+                if ev["event_type"] == "exchange_event_received":
+                    state = ev["payload"].get("event") or ev["payload"].get("state") or state
+            if state is None:
+                # Older exchanges predate the exchange_event_received record. Fall back to the
+                # strongest evidence they do carry, so a completed call is not shown as still live.
+                if "delivery_validated" in kinds:
+                    state = "COMPLETE"
+                elif "semantic_acceptance_recorded" in kinds:
+                    state = "COMPLETE"
+                elif "exchange_armed" in kinds:
+                    state = "PREPARED"
+            rec["state"] = state or "PREPARED"
+            rec["current"] = rec["state"] not in TERMINAL
+            exchanges.append(rec)
+        return {"exchanges": exchanges,
+                "current_exchanges": [r for r in exchanges if r["current"]],
+                "note": "An exchange whose latest recorded state is COMPLETE, INCOMPLETE, STOPPED or "
+                        "DELETED is retained as history and marked current=false. Only current "
+                        "exchanges are live routing obligations."}
 
     if name == "worker-history":
         wid = selectors.get("id")
@@ -603,17 +640,95 @@ def cmd_verify_indexes(args) -> int:
 
 
 def cmd_export_audit(args) -> int:
+    """A complete, chunkable projection for ledger audits.
+
+    AUDIT_PROTOCOL.md 9 requires the projection to carry more than the events and the tails: it needs
+    the event sequence ranges, hash-chain proof, INDEX SOURCE TAIL IDENTITIES, referenced artifact
+    identities, supersession links, and orphan and missing-reference checks. The first Layer-1
+    auditor found the earlier, thinner projection and raised UA3-C08-PROJECTION-001 against it. This
+    emits the full set.
+    """
     root = project_root(args.project)
     export = build_view(root, "audit-ledger-export", {})
     chunks = max(1, args.chunk)
     all_events = [(s, e) for s, evs in export["streams"].items() for e in evs]
     size = max(1, (len(all_events) + chunks - 1) // chunks)
-    packed = [{"chunk": i + 1,
-               "events": [{"stream": s, "event": e} for s, e in all_events[i * size:(i + 1) * size]]}
-              for i in range(chunks)]
-    return emit("export-audit", {"scope": args.scope, "chunks": len(packed),
-                                 "total_events": len(all_events), "tails": export["tails"],
-                                 "packages": packed})
+    packages = []
+    for i in range(chunks):
+        window = all_events[i * size:(i + 1) * size]
+        by_stream: dict[str, list[int]] = {}
+        for s, e in window:
+            by_stream.setdefault(s, []).append(e.get("seq"))
+        packages.append({
+            "chunk": i + 1,
+            "event_count": len(window),
+            "sequence_ranges": {s: [min(q), max(q)] for s, q in by_stream.items() if q},
+            "events": [{"stream": s, "event": e} for s, e in window],
+        })
+
+    # index source tail identities, so a reader can prove which stream state each index was built from
+    idx_dir = root / ".finprodline/indexes"
+    index_tails = {}
+    if idx_dir.is_dir():
+        for p in sorted(idx_dir.glob("*.json")):
+            try:
+                doc = json.loads(p.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                index_tails[p.name] = {"unreadable": True}
+                continue
+            index_tails[p.name] = {"built_at": doc.get("built_at"),
+                                   "source_tails": doc.get("source_tails")}
+
+    # supersession links, with the existence of every target stated explicitly
+    known = {e.get("event_id") for _, e in all_events}
+    supersession_links, dangling = [], []
+    for stream_name, evs in export["streams"].items():
+        for e in evs:
+            for target in e.get("supersedes") or []:
+                exists = target in known
+                supersession_links.append({"event_id": e.get("event_id"), "stream": stream_name,
+                                           "supersedes": target, "target_exists": exists})
+                if not exists:
+                    dangling.append({"event_id": e.get("event_id"), "missing_target": target})
+
+    # sequence contiguity and hash-chain proof, per stream
+    chain = {}
+    for stream_name, evs in export["streams"].items():
+        seqs = [e.get("seq") for e in evs]
+        gaps = [n for a, b in zip(seqs, seqs[1:]) if b != a + 1 for n in (a, b)]
+        links_ok = all(evs[i].get("prev_event_hash") == evs[i - 1].get("event_hash")
+                       for i in range(1, len(evs))) and bool(evs)
+        chain[stream_name] = {"events": len(evs), "seq_contiguous": not gaps,
+                              "seq_range": [min(seqs), max(seqs)] if seqs else None,
+                              "prev_hash_links_ok": links_ok,
+                              "tail_hash": evs[-1].get("event_hash") if evs else None}
+
+    # referenced artifact identities, and evidence refs that name a project-relative path
+    referenced, missing_refs = [], []
+    for stream_name, evs in export["streams"].items():
+        for e in evs:
+            for r in e.get("evidence_refs") or []:
+                looks_like_path = ("/" in r.rstrip("/")) and not r.startswith(("run-", "project-"))
+                if looks_like_path:
+                    exists = (root / r).exists()
+                    referenced.append({"event_id": e.get("event_id"), "ref": r, "exists": exists})
+                    if not exists:
+                        missing_refs.append({"event_id": e.get("event_id"), "ref": r})
+
+    return emit("export-audit", {
+        "scope": args.scope, "chunks": len(packages),
+        "total_events": len(all_events), "tails": export["tails"],
+        "index_source_tails": index_tails,
+        "stream_integrity": chain,
+        "supersession_links": supersession_links,
+        "referenced_identities": referenced,
+        "orphan_and_missing_reference_checks": {
+            "dangling_supersedes": dangling,
+            "missing_evidence_refs": missing_refs,
+            "streams_without_events": [s for s, v in chain.items() if v["events"] == 0],
+        },
+        "packages": packages,
+    })
 
 
 def cmd_lineage(args) -> int:

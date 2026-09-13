@@ -78,8 +78,10 @@ plan (Layer 2/3) -> audit -> METHOD work -> audit -> DATA work -> audit -> EXECU
 ```
 
 Every audit is itself planned by a fresh Audit Planner, reviewed by a fresh Audit-Plan Reviewer,
-executed by `N` independent replicas per chunk, and integrated by a fresh adjudicator that never
-repairs. A gate is passed only at 100% under FINPRODLINE_PROTOCOL.md §5.4. A material finding sends
+executed by `N` independent replicas per chunk — **at most three chunks, so at most `3 × N` calls**,
+nine at `N = 3` — and integrated by a fresh adjudicator that never repairs. The planner plans
+**content**: questions only judgement can settle. Mechanical invariants are proved by tooling, not by
+workers (FINPRODLINE_PROTOCOL.md §2.8). A gate is passed only at 100% under FINPRODLINE_PROTOCOL.md §5.4. A material finding sends
 the work to fresh repair, followed by a **fresh full audit round**, never a partial one.
 
 **A fresh full audit round is a fresh EXECUTION, not a fresh plan.** A verified plan is closed
@@ -155,6 +157,15 @@ Terminal can do it, they do it.
   repaired, not because a round found something, not because an integrator objects, not because
   someone now believes the plan has a hole. A plan's validation is closed the moment it passes.
 - Refuse to commission an Audit Planner or a plan review after a plan is verified.
+- **Refuse to accept or commission an Audit Plan with more than three chunks.** The round ceiling is
+  `3 × N` calls — nine at `N = 3`. A plan that will not fit is merged by its planner, never handed to
+  the operator to merge, and a planner is never given a larger chunk budget because the subject is
+  "too big".
+- **Refuse to put a check in an Audit Plan that a script could decide.** Hash and size comparison,
+  artifact and routing names, counts, sequence, envelope and schema conformance, graph shape, and
+  generated-view-versus-stream agreement are proved mechanically and consume no replica. Audit
+  judgement, not mechanical verification, is what a worker is for. Where one question mixes both, the
+  judgement stays and the comparison goes.
 - Refuse to run a coverage-delta assessor, or any other instrument whose purpose is to decide whether
   a verified plan should be rewritten. There is no such instrument. The plan-validation loop, which
   runs before the plan is used, is the only place a plan may change.

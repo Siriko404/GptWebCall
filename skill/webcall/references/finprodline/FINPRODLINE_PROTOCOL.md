@@ -104,6 +104,9 @@ permitted response to cost, and audit scope is not reduced because a run is expe
 is reported as run state. See `governance/OPERATOR_RULINGS.md` R001 in the project that produced
 this protocol.
 
+The **three-chunk ceiling of §2.8 is a shape rule, not a volume cap.** It changes how the work is
+packaged, never how much of it is done: the checks are not fewer, only the chunks that carry them.
+
 ### 2.6 Producer-supplied acceptance checks
 
 **The worker that produces an artifact also declares how that artifact is mechanically checked.**
@@ -194,6 +197,28 @@ assurance, and not a single check.
 **If the work cannot be made to satisfy the verified plan**, the line is `BLOCKED`. The Coordinator
 decides what happens to the work. The plan is still not reopened, by anyone, including the
 Coordinator. See [AUDIT_PROTOCOL.md](AUDIT_PROTOCOL.md) §8.
+
+### 2.8 Audit plans are content, and are capped at three chunks
+
+Two standing constraints on every Audit Plan, from the operator's ruling of 2026-09-13. They govern
+the **planning act** and apply to every plan authored from this point forward.
+
+1. **At most three chunks.** The round ceiling is `3 × N` auditor calls — **nine at `N = 3`**. Three
+   is a ceiling, not a target, and the cap never reduces coverage: every acceptance criterion is
+   still mapped and every check still executed. A plan needing more than three chunks is merged **by
+   its planner**, never handed to the operator to merge.
+
+2. **Content only.** The planner researches audit criteria and method exhaustively for its subject,
+   and plans from that research. A check exists to settle something only judgement can settle.
+   Questions a script decides from already-declared values — hashes, names, counts, sequence,
+   envelope, schema, graph shape, view-versus-stream agreement — are **not checks**. They are proved
+   mechanically by platform tooling and consume no replica. Where one question mixes both, the
+   judgement stays and the comparison goes.
+
+These concentrate the audit on what only an auditor can do, and hand the deterministic half to
+machines. They are not a licence to audit less.
+
+See [AUDIT_PROTOCOL.md](AUDIT_PROTOCOL.md) §2.1, §2.2 and §3.
 
 ---
 

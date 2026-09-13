@@ -44,13 +44,16 @@ permitted context and the acceptance contract, and produces an immutable Audit P
 
 The Audit Plan must:
 
+- **research audit criteria and method exhaustively for its subject**, and plan from that research
+  (§2.2);
 - enumerate every audit dimension in scope;
 - map every acceptance criterion to one or more checks;
-- define chunks that can be audited independently;
+- define **at most three** chunks that can be audited independently (§2.1);
 - identify cross-chunk dependencies;
 - define the evidence each check requires;
 - define failure and materiality rules;
-- define the ledger and state checks;
+- define the **substantive** ledger and state checks — whether recorded state matches what actually
+  happened (§2.2). Mechanical ledger integrity is proved by the state tool, not by a worker;
 - record the replica count `N` selected by the operator;
 - assess the **producer's declared acceptance-check specification** (FINPRODLINE_PROTOCOL.md §2.6)
   for coverage, strength and independence, and state what the audit adds beyond it;
@@ -64,12 +67,67 @@ understanding of its contract is self-consistent, which is exactly what the prod
 asserted. Declared checks that are vacuous, tautological, self-fulfilling, or that map fewer than
 every acceptance criterion are a material finding against the producer.
 
+### 2.1 The audit is planned in at most three chunks
+
+**An Audit Plan contains at most three chunks.** The round ceiling is therefore `3 × N` auditor
+calls — with the operator's `N = 3`, **nine calls**.
+
+Three is a **ceiling, not a target**. A plan may use one, two or three chunks, as its content
+requires.
+
+Chunks are thematic groupings, each independently auditable, and between them they still cover the
+whole criterion map. **The cap never reduces coverage: every acceptance criterion is still mapped,
+and every check is still executed.** If the subject cannot be covered in three chunks, the planner
+**merges** them — it does not emit more chunks and leave the merge to the operator.
+
+This is the standing shape of every audit round, not a concession granted for one round. The planner
+designs inside it from the start.
+
+### 2.2 The audit is about content; mechanical invariants are not checks
+
+**The planner researches audit criteria and method exhaustively for the subject in front of it** —
+what a sound audit of *this* kind of work actually requires — and builds the plan from that research.
+A plan assembled from a generic template has not been planned.
+
+A **check** exists to settle something only judgement can settle: whether the work is adequate,
+sufficient, coherent, correctly scoped, correctly reasoned, or whether a control actually tests what
+it claims to test.
+
+**A question a script can decide from already-declared values is not a check, and must not appear in
+an Audit Plan.** At minimum this excludes:
+
+- hash, size and byte-identity comparison;
+- file, artifact and routing names, and their presence or absence;
+- counts, sequence numbers and ordering;
+- envelope, schema and vocabulary conformance;
+- graph resolution and acyclicity;
+- agreement between a generated state view and the stream it is generated from.
+
+These are **proved mechanically** — deterministically, by the platform's own tooling — and recorded
+as run events. They are not delegated to a worker and they consume no replica.
+
+Where one question mixes the two — a hash comparison **and** a judgement about whether the pinned
+target is the right one — the plan keeps the **judgement** and drops the comparison.
+
+**Excluding a check never silently deletes verification.** An invariant excluded from a plan is one
+the platform must already prove. Where no tool proves it, closing that gap is a **tooling obligation
+on Terminal**, recorded as such — not a check smuggled back into the plan.
+
 ---
 
 ## 3. Audit-plan QA, and the recursion boundary
 
 The Audit Plan is itself audited by a fresh independent **Audit-Plan Reviewer** before execution.
 Defects produce a revised Audit Plan and a re-review.
+
+The reviewer **returns a plan without executing it** when the plan:
+
+- contains more than three chunks (§2.1);
+- contains any check a script could decide from declared values (§2.2);
+- leaves an acceptance criterion unmapped, or carries an orphan check;
+- shows no evidence of subject-specific research into criteria and method (§2.2).
+
+These are rejection grounds, not advisory notes.
 
 This meta-review follows a fixed protocol and **does not** recursively spawn another
 audit-planning hierarchy. This is the recursion boundary: plan QA is one level, never a tower.
@@ -80,16 +138,17 @@ audit-planning hierarchy. This is the recursion boundary: plan QA is one level, 
 
 After the Audit Plan passes:
 
-1. Split the work by the accepted chunks.
+1. Split the work across the accepted chunks — **at most three** (§2.1).
 2. For each chunk, spawn `N` independent fresh bounded auditor calls, `N` being the operator's
    recorded replica count.
 3. Replicas auditing the same chunk receive the same authoritative context and acceptance
    contract, and **not** each other's conclusions.
 4. Chunks and replicas run in parallel when dependencies permit.
 
-If the full corpus is too large for one call, the Auditor Planner chunks so that each worker has
-complete context **for its chunk** plus the global authority and index context needed to interpret
-it. Completeness is never achieved by silently dropping source material.
+If the full corpus is too large for one call, the Auditor Planner chunks — **within the three-chunk
+ceiling** (§2.1) — so that each worker has complete context **for its chunk** plus the global
+authority and index context needed to interpret it. Completeness is never achieved by silently
+dropping source material, and it is never achieved by adding chunks.
 
 ---
 
@@ -208,6 +267,11 @@ the Coordinator, not by anyone.**
 Ledger and state integrity is audited alongside every major plan and gate audit, and again at phase
 closure.
 
+The **mechanical** half of that integrity — sequence ranges, hash-chain proof, index source tails,
+supersession links, orphan and missing references — is proved by the state tool's audit projection
+and is **not** a plan check (§2.2). What the audit carries is the substantive question: whether the
+recorded state matches what actually happened.
+
 Because agents do not read raw JSONL in normal operation, the state tool produces complete,
 chunkable audit projections carrying:
 
@@ -249,3 +313,7 @@ a material finding, and the gate reopens.
   the plan stays closed regardless. There is no Coverage-Delta Assessor, no DELTA determination, and
   no plan revision after verification. If the work genuinely cannot satisfy a verified plan, the
   line is `BLOCKED` and the Coordinator decides what becomes of the work — not of the plan.
+- **A plan carries at most three chunks (§2.1).** The round ceiling is `3 × N` calls — nine at
+  `N = 3`. The cap never reduces coverage and is never passed to the operator to merge.
+- **A plan carries no check a script could decide (§2.2).** Mechanical invariants are proved by
+  platform tooling and consume no replica. Only judgement is audited by an auditor.
